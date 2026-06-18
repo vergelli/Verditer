@@ -33,6 +33,7 @@ local ACTION_RESULT_DOT_TICK          = C.ACTION_RESULT_DOT_TICK
 local ACTION_RESULT_CRITICAL_DAMAGE   = C.ACTION_RESULT_CRITICAL_DAMAGE
 local ACTION_RESULT_DOT_TICK_CRITICAL = C.ACTION_RESULT_DOT_TICK_CRITICAL
 local ACTION_RESULT_BLOCKED_DAMAGE    = C.ACTION_RESULT_BLOCKED_DAMAGE
+local ACTION_RESULT_FALL_DAMAGE       = C.ACTION_RESULT_FALL_DAMAGE
 local ACTION_RESULT_DAMAGE_SHIELDED   = C.ACTION_RESULT_DAMAGE_SHIELDED
 
 local Log = Verditer.Log.for_module("pipeline")
@@ -55,14 +56,16 @@ local now = Acquisition.now
 -- single unfiltered handler filtering in Lua. LibCombat does the same; this
 -- resolves SPEC §15.6. BLOCKED_DAMAGE = residual after a partial block; a full
 -- BLOCK arrives with hit=0 and is dropped by the hit>0 guard anyway.
--- NOTE: FALL_DAMAGE is NOT yet here (probe never captured a fall) — behaviour is
--- identical to the previous is_landed set; add it once a fall is probed.
+-- FALL_DAMAGE is included (probe 2026-06-17 caught FALL=2420 in a BG): a survival
+-- tool should count "the fall hit me". It is self/environmental — the filter
+-- tags it (source<=0) for the future env/self split, but it still counts in DTPS.
 local LANDED_RESULTS = {
   ACTION_RESULT_DAMAGE,
   ACTION_RESULT_DOT_TICK,
   ACTION_RESULT_CRITICAL_DAMAGE,
   ACTION_RESULT_DOT_TICK_CRITICAL,
   ACTION_RESULT_BLOCKED_DAMAGE,
+  ACTION_RESULT_FALL_DAMAGE,
 }
 
 local function run_stages(ev, accepted_key)

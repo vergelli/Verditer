@@ -41,7 +41,6 @@ local C_VIEWPORT  = { r = 0.30, g = 0.45, b = 0.85 }            -- viewport tint
 local C_HP        = { r = 0.30, g = 0.80, b = 0.45, a = 0.92 }  -- green: HP remaining
 local C_HP_LOST   = { r = 0.42, g = 0.44, b = 0.50, a = 0.80 }  -- grey: standing wound
 local C_HP_FRESH  = { r = 0.90, g = 0.30, b = 0.25, a = 0.92 }  -- red: HP lost this tick
-local C_HP_LINE   = { r = 0.55, g = 0.95, b = 0.65, a = 1.00 }  -- bright green HP% line
 local C_FULL_LINE = { r = 0.55, g = 0.95, b = 0.65, a = 0.45 }  -- the 100% reference line
 
 local FILL_TEXTURE   = "EsoUI/Art/UnitAttributeVisualizer/attributeBar_dynamic_fill.dds"
@@ -61,10 +60,9 @@ local recording_start_ms = 0
 
 local VIEW_OUTCOME        = 1
 local VIEW_BY_DAMAGE_TYPE = 2
-local VIEW_SURVIVAL       = 3   -- (B) HP green/red/grey bars + shield cap
-local VIEW_HP_LINE        = 4   -- (C) HP% line over DTPS bars
-local VIEW_MIN, VIEW_MAX  = VIEW_OUTCOME, VIEW_HP_LINE
-local VIEW_LABELS         = { "OUTCOME", "TYPE", "SURVIVAL", "HP LINE" }
+local VIEW_SURVIVAL       = 3   -- HP green/red/grey bars
+local VIEW_MIN, VIEW_MAX  = VIEW_OUTCOME, VIEW_SURVIVAL
+local VIEW_LABELS         = { "OUTCOME", "TYPE", "SURVIVAL" }
 local current_view        = VIEW_OUTCOME
 
 local prev_hp = -1   -- previous sample's hp_pct, for the fresh-loss (red) band
@@ -354,7 +352,6 @@ end
 -- hoisted scratch (see Vermilion: avoid per-frame array alloc at high capacity)
 local rt_xs, rt_top_hs              = {}, {}
 local ro_xs, ro_up_hs, ro_down_ys   = {}, {}, {}
-local rhl_xs, rhl_hp_ys             = {}, {}   -- HP-line view (reuses extent_dtps)
 
 -- View 2 — BY_DAMAGE_TYPE: stacked bars keyed by damageType, height ∝ DTPS.
 local function render_by_damage_type()
@@ -497,10 +494,10 @@ local function render_outcome()
   end
 end
 
--- View 3 — SURVIVAL (B): per-tick HP column. Green = HP remaining (min in the
--- tick), red = HP lost this tick, grey = standing wound; HP empties top-down. A
--- blue cap above the 100% line = shield absorbed this tick (flow, not remaining —
--- ESO has no reliable "current shield" read, so we show the work it did).
+-- View 3 — SURVIVAL: per-tick HP column. Green = HP remaining (min in the tick),
+-- red = HP lost this tick, grey = standing wound; HP empties top-down. The death/
+-- respawn reads as the green collapsing to nothing then refilling. (Shields are
+-- NOT shown here — they live in the OUTCOME view; this stays pure HP.)
 local function render_survival_bars()
   release_all_pools()
 
@@ -512,12 +509,11 @@ local function render_survival_bars()
   local cw, ch = canvas:GetWidth(), canvas:GetHeight()
   if cw <= 4 or ch <= 4 then return end
 
-  local ch_plot     = math_max(4, ch - TIME_STRIP_H)
-  local shield_zone = math_floor(ch_plot * 0.20)
-  local hp_zone     = ch_plot - shield_zone
-  local y100        = TIME_STRIP_H + hp_zone        -- full-HP line, above canvas bottom
+  local ch_plot = math_max(4, ch - TIME_STRIP_H)
+  local hp_zone = math_max(4, ch_plot - 12)         -- 12px headroom for the 100% label
+  local y100    = TIME_STRIP_H + hp_zone            -- full-HP line, above canvas bottom
 
-  local _, max_abs, span_ms = extent_outcome()
+  local _, span_ms = extent_dtps()                  -- only the time span is needed here
 
   -- grid: bright 100% line + faint 50% line + time strip
   hide_grid(controls.grid)
@@ -572,64 +568,7 @@ local function render_survival_bars()
       t:SetWidth(bw); t:SetHeight(grey_h)
       t:SetColor(C_HP_LOST.r, C_HP_LOST.g, C_HP_LOST.b, C_HP_LOST.a); t:SetHidden(false)
     end
-    if max_abs > 0 and s.ABS > 0 then
-      local cap_h = math_min(shield_zone, math_max(1, math_floor((s.ABS / max_abs) * shield_zone + 0.5)))
-      local c = controls.pool_up:AcquireObject()
-      c:ClearAnchors(); c:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, x, -y100)
-      c:SetWidth(bw); c:SetHeight(cap_h)
-      c:SetColor(C_ABS.r, C_ABS.g, C_ABS.b, C_ABS.a); c:SetHidden(false)
-    end
   end)
-end
-
--- View 4 — HP LINE (C): dim incoming-damage bars with the player's HP% as a
--- bright line over them (full plot height = 0..100%). Dual read: DTPS magnitude
--- (left axis labels) vs the life it threatens. "What almost killed me", classic.
-local function render_survival_line()
-  release_all_pools()
-
-  local n = Verditer.TemporalBuffer.count()
-  if n == 0 then controls.no_data:SetHidden(false); hide_grid(controls.grid); return end
-  controls.no_data:SetHidden(true)
-
-  local canvas = controls.canvas
-  local cw, ch = canvas:GetWidth(), canvas:GetHeight()
-  if cw <= 4 or ch <= 4 then return end
-  local ch_plot = math_max(4, ch - TIME_STRIP_H)
-
-  local max_dtps, span_ms = extent_dtps()
-  draw_grid(controls.grid, canvas, max_dtps > 0 and max_dtps or 1, span_ms)
-
-  local slot_w, bw, offset = slot_geometry(cw)
-  local xs, hp_ys = rhl_xs, rhl_hp_ys
-
-  Verditer.TemporalBuffer.iterate(function(i, s)
-    local x  = (offset + i - 1) * slot_w
-    local hp = s.hp_pct
-    if hp < 0 then hp = 1 elseif hp > 1 then hp = 1 end
-    xs[i]    = x + bw * 0.5
-    hp_ys[i] = TIME_STRIP_H + math_floor(hp * ch_plot + 0.5)
-
-    if max_dtps > 0 then
-      local h = math_max(0, math_floor((s.DTPS / max_dtps) * ch_plot + 0.5))
-      if h > 0 then
-        local t = controls.pool_type_seg:AcquireObject()
-        t:ClearAnchors(); t:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, x, -TIME_STRIP_H)
-        t:SetWidth(bw); t:SetHeight(h)
-        t:SetColor(0.55, 0.25, 0.22, 0.55); t:SetHidden(false)   -- dim red (context)
-      end
-    end
-  end)
-
-  for i = 2, n do
-    local l = controls.pool_type_line:AcquireObject()
-    l:ClearAnchors()
-    l:SetAnchor(BOTTOMLEFT,  canvas, BOTTOMLEFT, xs[i-1], -hp_ys[i-1])
-    l:SetAnchor(BOTTOMRIGHT, canvas, BOTTOMLEFT, xs[i],   -hp_ys[i])
-    l:SetColor(C_HP_LINE.r, C_HP_LINE.g, C_HP_LINE.b, C_HP_LINE.a)
-    l:SetThickness(LINE_THICKNESS)
-    l:SetHidden(false)
-  end
 end
 
 local function render_current_view()
@@ -637,10 +576,8 @@ local function render_current_view()
     render_outcome()
   elseif current_view == VIEW_BY_DAMAGE_TYPE then
     render_by_damage_type()
-  elseif current_view == VIEW_SURVIVAL then
-    render_survival_bars()
   else
-    render_survival_line()
+    render_survival_bars()
   end
 end
 
