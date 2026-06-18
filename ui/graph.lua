@@ -314,11 +314,19 @@ end
 local function slot_geometry(cw)
   local capacity = Verditer.TemporalBuffer.capacity()
   local n        = Verditer.TemporalBuffer.count()
-  local slot_w   = cw / capacity
+  local slot_w   = cw / capacity                 -- float; gates polyline density
   local bar_gap  = (slot_w > 3) and 1 or 0
-  local bw       = math_max(1, slot_w - bar_gap)
   local offset   = capacity - n
-  return slot_w, bw, offset
+  return slot_w, bar_gap, offset
+end
+
+-- Pixel-snapped bar rect (BACKLOG L): integer left + width via cumulative
+-- rounding, so bars tile the pixel grid exactly and never beat into the
+-- "thicker bar every N" moiré that float positions/widths produce.
+local function slot_rect(offset, i, slot_w, bar_gap)
+  local left  = math_floor((offset + i - 1) * slot_w + 0.5)
+  local right = math_floor((offset + i)     * slot_w + 0.5)
+  return left, math_max(1, right - left - bar_gap)
 end
 
 -- extents over the window
@@ -374,11 +382,11 @@ local function render_by_damage_type()
   if max_dtps <= 0 then hide_grid(controls.grid) return end
   draw_grid(controls.grid, canvas, max_dtps, span_ms)
 
-  local slot_w, bw, offset = slot_geometry(cw)
+  local slot_w, bar_gap, offset = slot_geometry(cw)
   local xs, top_hs = rt_xs, rt_top_hs
 
   Verditer.TemporalBuffer.iterate(function(i, s)
-    local x     = (offset + i - 1) * slot_w
+    local x, bw = slot_rect(offset, i, slot_w, bar_gap)
     local col_h = math_max(0, math_floor(ch_plot * (s.DTPS / max_dtps) + 0.5))
     xs[i]     = x + bw * 0.5
     top_hs[i] = col_h
@@ -441,11 +449,11 @@ local function render_outcome()
   local up_scale   = (max_dtps > 0) and (half / max_dtps) or 0
   local down_scale = (max_abs  > 0) and (half / max_abs)  or 0
 
-  local slot_w, bw, offset = slot_geometry(cw)
+  local slot_w, bar_gap, offset = slot_geometry(cw)
   local xs, up_hs, down_ys = ro_xs, ro_up_hs, ro_down_ys
 
   Verditer.TemporalBuffer.iterate(function(i, s)
-    local x       = (offset + i - 1) * slot_w
+    local x, bw   = slot_rect(offset, i, slot_w, bar_gap)
     local up_h    = math_min(half, math_max(0, math_floor(s.DTPS * up_scale   + 0.5)))
     local down_h  = math_min(half, math_max(0, math_floor(s.ABS  * down_scale + 0.5)))
     xs[i]      = x + bw * 0.5
@@ -535,10 +543,10 @@ local function render_survival_bars()
   g.ylabels[1]:SetHidden(false)
   draw_time_strip(g, canvas, span_ms)
 
-  local slot_w, bw, offset = slot_geometry(cw)
+  local slot_w, bar_gap, offset = slot_geometry(cw)
 
   Verditer.TemporalBuffer.iterate(function(i, s)
-    local x  = (offset + i - 1) * slot_w
+    local x, bw = slot_rect(offset, i, slot_w, bar_gap)
     local hp = s.hp_pct
     if hp < 0 then hp = 1 elseif hp > 1 then hp = 1 end
     local drop = s.hp_drop or 0
