@@ -16,6 +16,7 @@ local string_format              = string.format
 
 local log               = Verditer.Log.for_module("graph")
 local TOPLEFT           = zc.TOPLEFT
+local TOPRIGHT          = zc.TOPRIGHT
 local BOTTOMLEFT        = zc.BOTTOMLEFT
 local BOTTOM            = zc.BOTTOM
 local BOTTOMRIGHT       = zc.BOTTOMRIGHT
@@ -50,6 +51,14 @@ local LINE_THICKNESS = 2
 local N_HGRID      = 3
 local N_VGRID      = 3
 local TIME_STRIP_H = 18
+
+-- BY_SOURCE legend (top-right overlay): one row per attacker in the latest sample.
+local LEGEND_MAX   = 8
+local LEGEND_W     = 138
+local LEGEND_ROW_H = 14
+local LEGEND_PAD   = 4
+local C_LEGEND_BG  = { r = 0.04, g = 0.06, b = 0.12, a = 0.74 }
+local C_LEGEND_LBL = { r = 0.88, g = 0.91, b = 0.97, a = 1.0 }
 local C_GRID_LINE = { r = 0.55, g = 0.58, b = 0.70, a = 0.25 }
 local C_GRID_LBL  = { r = 0.82, g = 0.85, b = 0.90, a = 0.92 }
 local C_TIME_LBL  = { r = 0.68, g = 0.70, b = 0.75, a = 0.85 }
@@ -362,6 +371,118 @@ end
 local rt_xs, rt_top_hs              = {}, {}
 local ro_xs, ro_up_hs, ro_down_ys   = {}, {}, {}
 
+-- ── BY_SOURCE legend ──────────────────────────────────────────────────────────
+-- Name cleaning is deferred to here (the only place names are displayed). Raw
+-- combat-event names carry the `^Mx` gender markup and PvP realm codes; zo_strformat
+-- strips them. Cached by raw string so a steady fight formats each name once, not
+-- every tick.
+local name_cache = {}
+local function clean_name(raw)
+  if raw == nil or raw == "" then return "" end
+  local c = name_cache[raw]
+  if c == nil then
+    c = zo_strformat(SI_UNIT_NAME, raw)
+    name_cache[raw] = c
+  end
+  return c
+end
+
+-- Display label for a source slot: Other fold, environment/self (uid 0), or a
+-- cleaned attacker name (falling back to "Unknown" if the engine gave no name).
+local function source_label(grp)
+  if grp.uid == -1 then return "Other" end
+  if grp.uid == 0  then return "Environment" end
+  local nm = clean_name(grp.name)
+  if nm == "" then return "Unknown" end
+  return nm
+end
+
+local function create_legend(prefix, parent)
+  local WM = WINDOW_MANAGER
+  local L  = { rows = {} }
+
+  -- The bar fills are created lazily on first render (after init), so by creation
+  -- order they'd draw OVER the legend. Force the legend above them with a high
+  -- draw level (bars stay at the default 0).
+  L.bg = WM:CreateControl(prefix .. "Bg", parent, CT_TEXTURE)
+  L.bg:SetTexture(FILL_TEXTURE)
+  L.bg:SetTextureCoords(0, 1, 0, 0.05)
+  L.bg:SetColor(C_LEGEND_BG.r, C_LEGEND_BG.g, C_LEGEND_BG.b, C_LEGEND_BG.a)
+  L.bg:SetDrawLevel(5)
+  L.bg:SetHidden(true)
+
+  for i = 1, LEGEND_MAX do
+    local sw = WM:CreateControl(prefix .. "Sw" .. i, parent, CT_TEXTURE)
+    sw:SetTexture(FILL_TEXTURE)
+    sw:SetTextureCoords(0, 1, 0, 0.05)
+    sw:SetDimensions(10, 10)
+    sw:SetDrawLevel(6)
+    sw:SetHidden(true)
+
+    local lbl = WM:CreateControl(prefix .. "Lbl" .. i, parent, CT_LABEL)
+    lbl:SetFont("ZoFontGameSmall")
+    lbl:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+    lbl:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+    lbl:SetColor(C_LEGEND_LBL.r, C_LEGEND_LBL.g, C_LEGEND_LBL.b, C_LEGEND_LBL.a)
+    lbl:SetDimensions(LEGEND_W - 22, LEGEND_ROW_H)
+    lbl:SetDrawLevel(7)
+    lbl:SetHidden(true)
+
+    L.rows[i] = { sw = sw, lbl = lbl }
+  end
+  return L
+end
+
+local function hide_legend()
+  local L = controls.legend
+  if not L then return end
+  L.bg:SetHidden(true)
+  for i = 1, LEGEND_MAX do
+    L.rows[i].sw:SetHidden(true)
+    L.rows[i].lbl:SetHidden(true)
+  end
+end
+
+-- Render the legend from the latest sample's source_groups (already top-7+Other,
+-- sorted by share desc). Mirrors the rightmost stacked column, so it persists when
+-- recording is stopped (unlike a fresh "now" recompute, which would empty out).
+local function update_legend(groups)
+  local L = controls.legend
+  if not L then return end
+  local n = (groups and (groups.count or 0)) or 0
+  if n == 0 then hide_legend() return end
+  if n > LEGEND_MAX then n = LEGEND_MAX end
+
+  local canvas   = controls.canvas
+  local block_h  = LEGEND_PAD * 2 + n * LEGEND_ROW_H
+  L.bg:ClearAnchors()
+  L.bg:SetAnchor(TOPRIGHT, canvas, TOPRIGHT, -2, 2)
+  L.bg:SetDimensions(LEGEND_W, block_h)
+  L.bg:SetHidden(false)
+
+  for i = 1, n do
+    local grp = groups[i]
+    local row = L.rows[i]
+    local y   = LEGEND_PAD + (i - 1) * LEGEND_ROW_H
+
+    row.sw:ClearAnchors()
+    row.sw:SetAnchor(TOPLEFT, L.bg, TOPLEFT, LEGEND_PAD, y + 2)
+    row.sw:SetColor(grp.r, grp.g, grp.b, 1.0)
+    row.sw:SetHidden(false)
+
+    row.lbl:ClearAnchors()
+    row.lbl:SetAnchor(TOPLEFT, L.bg, TOPLEFT, LEGEND_PAD + 16, y)
+    row.lbl:SetText(string_format("%s  %d%%", source_label(grp),
+                                  math_floor(grp.share * 100 + 0.5)))
+    row.lbl:SetHidden(false)
+  end
+
+  for i = n + 1, LEGEND_MAX do
+    L.rows[i].sw:SetHidden(true)
+    L.rows[i].lbl:SetHidden(true)
+  end
+end
+
 -- Shared stacked-bar renderer: per-tick column of height ∝ DTPS, segmented by a
 -- group set. View 2 (BY_DAMAGE_TYPE) keys it on `type_groups`, View 4 (BY_SOURCE)
 -- on `source_groups` — identical geometry, different grouping. Each group slot
@@ -429,7 +550,16 @@ local function render_by_damage_type() render_stacked("type_groups") end
 
 -- View 4 — BY_SOURCE: stacked by attacker ("who's killing me"). Same column
 -- height (DTPS), segments coloured by the stable per-uid hash; top-7 + Other.
-local function render_by_source() render_stacked("source_groups") end
+-- Adds the legend (swatch + name + %) keyed off the latest sample so "who" reads.
+local function render_by_source()
+  render_stacked("source_groups")
+  if Verditer.TemporalBuffer.count() > 0 then
+    local s = Verditer.TemporalBuffer.latest()
+    update_legend(s and s.source_groups)
+  else
+    hide_legend()
+  end
+end
 
 -- View 1 — OUTCOME (diverging shared-axis): DTPS grows UP (red) from a shared
 -- baseline, ABS grows DOWN (blue). One frontier polyline per side. The shield
@@ -591,6 +721,7 @@ local function render_survival_bars()
 end
 
 local function render_current_view()
+  if current_view ~= VIEW_BY_SOURCE then hide_legend() end
   if current_view == VIEW_OUTCOME then
     render_outcome()
   elseif current_view == VIEW_BY_DAMAGE_TYPE then
@@ -663,6 +794,7 @@ function M.on_record_click()
   Verditer.TemporalBuffer.clear()
   release_all_pools()
   hide_grid(controls.grid)
+  hide_legend()
   controls.no_data:SetHidden(false)
   Verditer.TemporalBuffer.start_recording()
   recording_start_ms = GetGameTimeMilliseconds()
@@ -693,6 +825,7 @@ function M.on_flush_click()
   Verditer.TemporalBuffer.clear()
   release_all_pools()
   hide_grid(controls.grid)
+  hide_legend()
   refresh_button_colors()
   controls.status:SetText("")
   update_header(0)
@@ -702,6 +835,7 @@ end
 function M.on_close_click()
   Verditer.Visibility.set("graph", false)
   release_all_pools()
+  hide_legend()
 end
 
 function M.on_move_stop()
@@ -750,6 +884,7 @@ function M.toggle()
     render_current_view()
   else
     release_all_pools()
+    hide_legend()
   end
 end
 
@@ -793,7 +928,8 @@ function M.init()
   local sv_a = (sv.graph and sv.graph.viewport_alpha_pct) or 30
   VerditerGraphWindowViewportBg:SetCenterColor(C_VIEWPORT.r, C_VIEWPORT.g, C_VIEWPORT.b, sv_a / 100)
 
-  controls.grid = create_grid("VerditerGrid", controls.canvas)
+  controls.grid   = create_grid("VerditerGrid", controls.canvas)
+  controls.legend = create_legend("VerditerLegend", controls.canvas)
 
   controls.pool_type_seg  = make_fill_pool("VerditerTypeSeg")
   controls.pool_type_line = make_line_pool("VerditerTypeLine")

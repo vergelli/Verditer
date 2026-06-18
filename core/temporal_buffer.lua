@@ -83,6 +83,15 @@ function M.count()        return state.count     end
 function M.capacity()     return state.capacity  end
 function M.is_recording() return state.recording end
 
+-- Most recently pushed sample (the rightmost bar), or nil if empty. Used by the
+-- BY_SOURCE legend to mirror the latest stacked column.
+function M.latest()
+  if state.count == 0 then return nil end
+  local idx = state.write - 1
+  if idx < 1 then idx = state.capacity end
+  return state.data[idx]
+end
+
 function M.start_recording()
   state.recording = true
   log:info("start_recording")
