@@ -48,15 +48,22 @@ end
 
 local now = Acquisition.now
 
--- R_land membership (SPEC §4.1): reached HP. BLOCKED_DAMAGE = residual after a
--- partial block; full BLOCK arrives with hit=0 and is dropped by the hit guard.
-local function is_landed(r)
-  return r == ACTION_RESULT_DAMAGE
-      or r == ACTION_RESULT_DOT_TICK
-      or r == ACTION_RESULT_CRITICAL_DAMAGE
-      or r == ACTION_RESULT_DOT_TICK_CRITICAL
-      or r == ACTION_RESULT_BLOCKED_DAMAGE
-end
+-- R_land (SPEC §4.1, validated by the live probe 2026-06-17): the incoming
+-- results that reach HP. We register ONE hardware-filtered subscription per code
+-- (below) so the C engine drops the ~90% non-damage stream (buffs/heals/effects/
+-- snares) BEFORE it ever wakes our Lua — strictly less main-thread work than a
+-- single unfiltered handler filtering in Lua. LibCombat does the same; this
+-- resolves SPEC §15.6. BLOCKED_DAMAGE = residual after a partial block; a full
+-- BLOCK arrives with hit=0 and is dropped by the hit>0 guard anyway.
+-- NOTE: FALL_DAMAGE is NOT yet here (probe never captured a fall) — behaviour is
+-- identical to the previous is_landed set; add it once a fall is probed.
+local LANDED_RESULTS = {
+  ACTION_RESULT_DAMAGE,
+  ACTION_RESULT_DOT_TICK,
+  ACTION_RESULT_CRITICAL_DAMAGE,
+  ACTION_RESULT_DOT_TICK_CRITICAL,
+  ACTION_RESULT_BLOCKED_DAMAGE,
+}
 
 local function run_stages(ev, accepted_key)
   if not ev then
@@ -125,17 +132,20 @@ function M.init()
   Verditer.Diagnostics.init()
   Verditer.Metrics.init()
 
-  -- Subscription A: landed incoming damage (reached HP). One registration with
-  -- an in-handler result switch (cf. §15.6: vs per-result registration; measure
-  -- which is cheaper live). Hardware-filtered to TARGET = the local player.
-  E.register("Verditer_E_DmgIn", EVENT_COMBAT_EVENT, function(...)
-    local r = ...
-    if is_landed(r) then M.dispatch_dmg_in(...) end
-  end)
-  E.add_filter("Verditer_E_DmgIn", EVENT_COMBAT_EVENT,
-    REGISTER_FILTER_TARGET_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER)
-  E.add_filter("Verditer_E_DmgIn", EVENT_COMBAT_EVENT,
-    REGISTER_FILTER_IS_ERROR, false)
+  -- Subscription set A: landed incoming damage (reached HP). ONE hardware-
+  -- filtered registration per result code — the engine filters in C, so our
+  -- handler only wakes for actual damage (not the buff/heal/effect flood). Each
+  -- is also filtered to TARGET = the local player and non-error.
+  for i = 1, #LANDED_RESULTS do
+    local name = "Verditer_E_DmgIn" .. i
+    E.register(name, EVENT_COMBAT_EVENT, M.dispatch_dmg_in)
+    E.add_filter(name, EVENT_COMBAT_EVENT,
+      REGISTER_FILTER_COMBAT_RESULT, LANDED_RESULTS[i])
+    E.add_filter(name, EVENT_COMBAT_EVENT,
+      REGISTER_FILTER_TARGET_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER)
+    E.add_filter(name, EVENT_COMBAT_EVENT,
+      REGISTER_FILTER_IS_ERROR, false)
+  end
 
   -- Subscription B: shielded (the player's own shield absorbing).
   E.register("Verditer_E_AbsIn", EVENT_COMBAT_EVENT, M.dispatch_abs_in)
@@ -146,5 +156,5 @@ function M.init()
   E.add_filter("Verditer_E_AbsIn", EVENT_COMBAT_EVENT,
     REGISTER_FILTER_IS_ERROR, false)
 
-  Log:info("init complete; 2 combat-event handlers registered (TARGET=PLAYER)")
+  Log:info("init complete; ", #LANDED_RESULTS, " landed + 1 shielded combat-event handlers registered (hardware-filtered, TARGET=PLAYER)")
 end
