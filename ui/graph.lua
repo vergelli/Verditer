@@ -10,6 +10,7 @@ local WINDOW_MANAGER             = zui.WINDOW_MANAGER
 local GetGameTimeMilliseconds    = api.GetGameTimeMilliseconds
 local GetString                  = api.GetString
 local math_max                   = math.max
+local math_min                   = math.min
 local math_floor                 = math.floor
 local string_format              = string.format
 
@@ -245,7 +246,7 @@ end
 
 -- diverging grid (Outcome): a bright shared baseline mid-plot, faint quartiles
 -- above/below, max labels at the two tips, plus the time strip.
-local function draw_grid_diverging(grid, canvas, baseline_y, half, max_val, span_ms)
+local function draw_grid_diverging(grid, canvas, baseline_y, half, max_dtps, max_abs, span_ms)
   local cw = canvas:GetWidth()
   local ch = canvas:GetHeight()
   if cw <= 0 or ch <= 0 then hide_grid(grid) return end
@@ -263,7 +264,7 @@ local function draw_grid_diverging(grid, canvas, baseline_y, half, max_val, span
   hline(2, baseline_y + math_floor(half * 0.5), C_GRID_LINE)   -- DTPS quartile
   hline(3, baseline_y - math_floor(half * 0.5), C_GRID_LINE)   -- ABS quartile
 
-  -- y labels: 0 at the baseline, max up (DTPS) and max down (ABS)
+  -- y labels: 0 at the baseline, max DTPS up, max ABS down — each its own scale
   grid.ylabels[1]:ClearAnchors()
   grid.ylabels[1]:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, 2, -(baseline_y + 1))
   grid.ylabels[1]:SetText("0")
@@ -271,12 +272,12 @@ local function draw_grid_diverging(grid, canvas, baseline_y, half, max_val, span
 
   grid.ylabels[2]:ClearAnchors()
   grid.ylabels[2]:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, 2, -(baseline_y + half))
-  grid.ylabels[2]:SetText(max_val > 0 and fmt_val(max_val) or "")
+  grid.ylabels[2]:SetText(max_dtps > 0 and fmt_val(max_dtps) or "")
   grid.ylabels[2]:SetHidden(false)
 
   grid.ylabels[3]:ClearAnchors()
   grid.ylabels[3]:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, 2, -(baseline_y - half + 10))
-  grid.ylabels[3]:SetText(max_val > 0 and fmt_val(max_val) or "")
+  grid.ylabels[3]:SetText(max_abs > 0 and fmt_val(max_abs) or "")
   grid.ylabels[3]:SetHidden(false)
 
   for i = 1, N_VGRID do
@@ -323,16 +324,20 @@ local function extent_dtps()
   return max_dtps, (t_last - t_first)
 end
 
+-- Outcome uses INDEPENDENT per-side scales (Federico, in-game 2026-06-17): the
+-- top half fills to max(DTPS), the bottom half to max(ABS), so each side reads
+-- against its own peak and the full opening encodes max(DTPS) + max(ABS). (This
+-- supersedes SPEC §5.1's shared-scale note, which compressed the smaller side.)
 local function extent_outcome()
-  local max_v = 0
+  local max_dtps, max_abs = 0, 0
   local t_first, t_last = 0, 0
   Verditer.TemporalBuffer.iterate(function(i, s)
-    if s.DTPS > max_v then max_v = s.DTPS end
-    if s.ABS  > max_v then max_v = s.ABS  end
+    if s.DTPS > max_dtps then max_dtps = s.DTPS end
+    if s.ABS  > max_abs  then max_abs  = s.ABS  end
     if i == 1 then t_first = s.t end
     t_last = s.t
   end)
-  return max_v, (t_last - t_first)
+  return max_dtps, max_abs, (t_last - t_first)
 end
 
 -- hoisted scratch (see Vermilion: avoid per-frame array alloc at high capacity)
@@ -419,17 +424,21 @@ local function render_outcome()
   local half       = math_floor(ch_plot / 2)
   local baseline_y = TIME_STRIP_H + half   -- height above canvas bottom
 
-  local max_v, span_ms = extent_outcome()
-  if max_v <= 0 then hide_grid(controls.grid) return end
-  draw_grid_diverging(controls.grid, canvas, baseline_y, half, max_v, span_ms)
+  local max_dtps, max_abs, span_ms = extent_outcome()
+  if max_dtps <= 0 and max_abs <= 0 then hide_grid(controls.grid) return end
+  draw_grid_diverging(controls.grid, canvas, baseline_y, half, max_dtps, max_abs, span_ms)
+
+  -- per-side pixels-per-unit; 0 when a side has no data (avoids div-by-zero)
+  local up_scale   = (max_dtps > 0) and (half / max_dtps) or 0
+  local down_scale = (max_abs  > 0) and (half / max_abs)  or 0
 
   local slot_w, bw, offset = slot_geometry(cw)
   local xs, up_hs, down_ys = ro_xs, ro_up_hs, ro_down_ys
 
   Verditer.TemporalBuffer.iterate(function(i, s)
     local x       = (offset + i - 1) * slot_w
-    local up_h    = math_max(0, math_floor(half * (s.DTPS / max_v) + 0.5))
-    local down_h  = math_max(0, math_floor(half * (s.ABS  / max_v) + 0.5))
+    local up_h    = math_min(half, math_max(0, math_floor(s.DTPS * up_scale   + 0.5)))
+    local down_h  = math_min(half, math_max(0, math_floor(s.ABS  * down_scale + 0.5)))
     xs[i]      = x + bw * 0.5
     up_hs[i]   = up_h
     down_ys[i] = baseline_y - down_h
