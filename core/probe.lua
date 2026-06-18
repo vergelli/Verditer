@@ -146,6 +146,25 @@ function M.dump_report()
     L[#L+1] = string_format("  %-10s (%d) : %d", dtlabel(t), t, c)
   end
 
+  -- engine / perf footer (from the PRODUCTION pipeline running alongside the
+  -- probe) so one dump carries correctness + the §15.5 pool/perf signal.
+  L[#L+1] = "-- engine / perf (production pipeline) --"
+  if Verditer.Metrics and Verditer.Metrics.pool_in_use then
+    L[#L+1] = string_format("  pool: in_use=%d / cap=%d",
+      Verditer.Metrics.pool_in_use(), Verditer.Metrics.pool_capacity())
+    local ms = Verditer.Metrics.size_snapshot and Verditer.Metrics.size_snapshot() or {}
+    L[#L+1] = string_format("  buffers: dmg_in=%d  abs_in=%d", ms.dmg_in or 0, ms.abs_in or 0)
+  end
+  if Verditer.Diagnostics and Verditer.Diagnostics.snapshot then
+    local c = (Verditer.Diagnostics.snapshot() or {}).counters or {}
+    L[#L+1] = string_format("  dmg_in: in=%d accepted=%d dropped_noise=%d dropped_mode=%d",
+      c["engine.dmg_in.in"] or 0, c["engine.dmg_in.accepted"] or 0,
+      c["engine.dmg_in.dropped_noise"] or 0, c["engine.dmg_in.dropped_mode"] or 0)
+    L[#L+1] = string_format("  abs_in: in=%d accepted=%d", c["engine.abs_in.in"] or 0, c["engine.abs_in.accepted"] or 0)
+    L[#L+1] = string_format("  POOL.EXHAUSTED=%d   filter.env_self=%d   damage_type_fallback=%d",
+      c["engine.pool.exhausted"] or 0, c["filter.env_self"] or 0, c["metrics.damage_type_fallback"] or 0)
+  end
+
   L[#L+1] = "-- rows: t,result,hit,dmgType,srcUid,srcType,tgtType,abilityId,abilityName,overflow --"
   if state.n == 0 then
     L[#L+1] = "(no rows — enable with /verditer probe on, then take some hits)"

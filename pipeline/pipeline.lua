@@ -156,5 +156,16 @@ function M.init()
   E.add_filter("Verditer_E_AbsIn", EVENT_COMBAT_EVENT,
     REGISTER_FILTER_IS_ERROR, false)
 
-  Log:info("init complete; ", #LANDED_RESULTS, " landed + 1 shielded combat-event handlers registered (hardware-filtered, TARGET=PLAYER)")
+  -- Subscription C: player health, for the Survival views. Event-driven (catches
+  -- sub-tick dips); the graph also polls at the sample tick. Filtered to the
+  -- player's health power only.
+  E.register("Verditer_E_HealthIn", C.EVENT_POWER_UPDATE, function(_unitTag, _idx, _ptype, value, maxv)
+    Verditer.Metrics.note_health(value, maxv)
+  end)
+  E.add_filter("Verditer_E_HealthIn", C.EVENT_POWER_UPDATE,
+    C.REGISTER_FILTER_UNIT_TAG, "player")
+  E.add_filter("Verditer_E_HealthIn", C.EVENT_POWER_UPDATE,
+    C.REGISTER_FILTER_POWER_TYPE, C.COMBAT_MECHANIC_FLAGS_HEALTH)
+
+  Log:info("init complete; ", #LANDED_RESULTS, " landed + 1 shielded + 1 health handlers registered (hardware-filtered, TARGET=PLAYER)")
 end

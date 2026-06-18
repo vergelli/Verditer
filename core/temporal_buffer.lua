@@ -23,18 +23,20 @@ function M.init(capacity)
   state.count    = 0
   state.data     = {}
   for i = 1, capacity do
-    -- hp_pct reserved for View 4 (Survival); -1 => unknown/not sampled.
-    state.data[i] = { t = 0, DTPS = 0, ABS = 0, hp_pct = -1, type_groups = { count = 0 } }
+    -- hp_pct = min HP fraction in the interval (Survival); hp_drop = fraction of
+    -- HP lost this tick (the fresh-damage red band). -1 hp_pct => unknown.
+    state.data[i] = { t = 0, DTPS = 0, ABS = 0, hp_pct = -1, hp_drop = 0, type_groups = { count = 0 } }
   end
   log:info("init: capacity=", capacity)
 end
 
-function M.push(timestamp, DTPS, ABS, type_groups, hp_pct)
-  local slot  = state.data[state.write]
-  slot.t      = timestamp
-  slot.DTPS   = DTPS
-  slot.ABS    = ABS
-  slot.hp_pct = hp_pct or -1
+function M.push(timestamp, DTPS, ABS, type_groups, hp_pct, hp_drop)
+  local slot   = state.data[state.write]
+  slot.t       = timestamp
+  slot.DTPS    = DTPS
+  slot.ABS     = ABS
+  slot.hp_pct  = hp_pct or -1
+  slot.hp_drop = hp_drop or 0
 
   local dst = slot.type_groups
   local n   = (type_groups and (type_groups.count or #type_groups)) or 0

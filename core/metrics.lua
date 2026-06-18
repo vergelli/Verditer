@@ -15,6 +15,13 @@ local log = Verditer.Log.for_module("metrics")
 local DamageTypeColors
 local GENERIC
 
+-- health tracking (Survival views). hp_cur = latest fraction; hp_min = lowest
+-- fraction seen since the last sample tick (the spike-preserving reducer,
+-- HANDOFF §7 — never average the dip that nearly killed you). -1 = unknown.
+local GetUnitPower
+local HEALTH
+local hp_cur, hp_min = -1, -1
+
 local pairs     = pairs
 local math_floor = math.floor
 
@@ -40,7 +47,43 @@ function M.init()
   DamageTypeColors = Verditer.DamageTypeColors
   GENERIC = Verditer.zenimax.constants.DAMAGE_TYPE_GENERIC
 
+  GetUnitPower = Verditer.zenimax.api.GetUnitPower
+  HEALTH = Verditer.zenimax.constants.COMBAT_MECHANIC_FLAGS_HEALTH
+
   log:info("init: dmg_window=", W_MS, "ms abs_window=", W_SHIELD_MS, "ms pool=", cap)
+end
+
+-- Fed by EVENT_POWER_UPDATE (pipeline) to catch sub-tick dips between samples.
+function M.note_health(value, max)
+  if not max or max <= 0 then return end
+  local f = value / max
+  hp_cur = f
+  if hp_min < 0 or f < hp_min then hp_min = f end
+end
+
+-- Called once per sample tick. Returns the MIN HP fraction over the interval
+-- (the worst moment), then resets the window. Polls once for freshness in case
+-- no EVENT_POWER_UPDATE fired this interval. Returns -1 if HP is unknown.
+function M.hp_sample()
+  if GetUnitPower then
+    local cur, mx = GetUnitPower("player", HEALTH)
+    if mx and mx > 0 then
+      hp_cur = cur / mx
+      if hp_min < 0 or hp_cur < hp_min then hp_min = hp_cur end
+    end
+  end
+  local s = (hp_min >= 0) and hp_min or hp_cur
+  hp_min = hp_cur                  -- reset the dip window to the current level
+  return s
+end
+
+-- Flush any stale dip (e.g. before a fresh recording starts).
+function M.hp_reset()
+  if GetUnitPower then
+    local cur, mx = GetUnitPower("player", HEALTH)
+    if mx and mx > 0 then hp_cur = cur / mx end
+  end
+  hp_min = hp_cur
 end
 
 function M.set_window(ms)
