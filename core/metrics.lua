@@ -13,6 +13,7 @@ local event_pool
 local log = Verditer.Log.for_module("metrics")
 
 local DamageTypeColors
+local SourcePalette
 local GENERIC
 
 -- health tracking (Survival views). hp_cur = latest fraction; hp_min = lowest
@@ -45,6 +46,7 @@ function M.init()
   abs_in_buf = RingBuffer.new(W_SHIELD_MS,  512, release_to_pool)
 
   DamageTypeColors = Verditer.DamageTypeColors
+  SourcePalette    = Verditer.SourcePalette
   GENERIC = Verditer.zenimax.constants.DAMAGE_TYPE_GENERIC
 
   GetUnitPower = Verditer.zenimax.api.GetUnitPower
@@ -159,6 +161,84 @@ function M.type_groups_into(out, now_ms)
         j = j - 1
       end
       out[j + 1] = key
+    end
+  end
+  out.count = n   -- readers loop 1..count, never #out
+  return n
+end
+
+-- By-source breakdown (View 4, BACKLOG G). Buckets landed (HP) damage by
+-- source_unit_id, normalized to a share of total DTPS, then folds the long tail
+-- into one "Other" slot (top-N over an OPEN key space — the structural difference
+-- from type_groups_into's fixed 13). The name is carried by reference for a future
+-- legend; colour is the stable per-uid hash. Zero per-call alloc (scratch reused).
+local accum_src_buckets = {}
+local accum_src_names   = {}
+local SOURCE_MAX = 8   -- top (SOURCE_MAX-1) attackers shown + 1 "Other" fold slot
+
+local function accumulate_sources(now_ms, buckets, names)
+  for k in pairs(buckets) do buckets[k] = nil end   -- reset in place (zero alloc)
+  for k in pairs(names)   do names[k]   = nil end
+  local ws    = W_MS / 1000
+  local total = 0
+  dmg_in_buf:trim(now_ms)
+  for i = dmg_in_buf.head, dmg_in_buf.tail do
+    local e   = dmg_in_buf.entries[i]
+    local amt = e.amount or 0
+    if amt > 0 then
+      local r   = amt / ws
+      local uid = e.source_unit_id or 0
+      buckets[uid] = (buckets[uid] or 0) + r
+      if names[uid] == nil then names[uid] = e.source_name or "" end
+      total = total + r
+    end
+  end
+  return total
+end
+
+function M.source_groups_into(out, now_ms)
+  local buckets = accum_src_buckets
+  local names   = accum_src_names
+  local total   = accumulate_sources(now_ms, buckets, names)
+  local n = 0
+  if total > 0 then
+    for uid, val in pairs(buckets) do
+      n = n + 1
+      local slot = out[n]
+      if not slot then slot = {}; out[n] = slot end
+      local c = SourcePalette.lookup(uid)
+      slot.r = c.r; slot.g = c.g; slot.b = c.b; slot.a = c.a
+      slot.share = val / total
+      slot.uid   = uid
+      slot.name  = names[uid] or ""
+    end
+
+    -- sort by share desc, by hand over 1..n (same reasoning as type_groups_into:
+    -- table.sort would order #out and drag stale tail slots in).
+    for i = 2, n do
+      local key = out[i]
+      local j = i - 1
+      while j >= 1 and out[j].share < key.share do
+        out[j + 1] = out[j]
+        j = j - 1
+      end
+      out[j + 1] = key
+    end
+
+    -- top-N + Other fold: keep the top (SOURCE_MAX-1) attackers individually,
+    -- collapse the remaining tail into one slate "Other" slot (uid = -1 sentinel).
+    if n > SOURCE_MAX then
+      local keep  = SOURCE_MAX - 1
+      local other = 0
+      for i = keep + 1, n do other = other + out[i].share end
+      local slot = out[keep + 1]
+      if not slot then slot = {}; out[keep + 1] = slot end
+      local c = SourcePalette.OTHER
+      slot.r = c.r; slot.g = c.g; slot.b = c.b; slot.a = c.a
+      slot.share = other
+      slot.uid   = -1
+      slot.name  = "Other"
+      n = SOURCE_MAX
     end
   end
   out.count = n   -- readers loop 1..count, never #out

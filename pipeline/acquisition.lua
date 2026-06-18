@@ -23,8 +23,9 @@ local function acquire()
   return Verditer.Metrics.acquire_event()
 end
 
--- incoming damage that reached HP
-function M.acquire_dmg_in(t, hit, sourceUnitId, damageType, abilityId, result, overflow)
+-- incoming damage that reached HP. sourceName is stored by reference (the engine
+-- already built the string) — zero new alloc; it is cleaned lazily at legend time.
+function M.acquire_dmg_in(t, hit, sourceUnitId, sourceName, damageType, abilityId, result, overflow)
   if (hit or 0) <= 0 then return nil end
   local ev = acquire()
   if not ev then return nil end
@@ -35,12 +36,13 @@ function M.acquire_dmg_in(t, hit, sourceUnitId, damageType, abilityId, result, o
   ev.damage_type    = damageType   or 0
   ev.ability_id     = abilityId    or 0
   ev.source_unit_id = sourceUnitId or 0
+  ev.source_name    = sourceName   or ""
   ev.overflow       = overflow     or 0
   return ev
 end
 
 -- incoming damage absorbed by the player's own shield
-function M.acquire_abs_in(t, hit, sourceUnitId, damageType, abilityId)
+function M.acquire_abs_in(t, hit, sourceUnitId, sourceName, damageType, abilityId)
   if (hit or 0) <= 0 then return nil end
   local ev = acquire()
   if not ev then return nil end
@@ -51,6 +53,7 @@ function M.acquire_abs_in(t, hit, sourceUnitId, damageType, abilityId)
   ev.damage_type    = damageType   or 0
   ev.ability_id     = abilityId    or 0
   ev.source_unit_id = sourceUnitId or 0
+  ev.source_name    = sourceName   or ""
   ev.overflow       = 0
   return ev
 end

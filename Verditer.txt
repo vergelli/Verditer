@@ -36,6 +36,7 @@ observability/profiler.lua
 observability/validation.lua
 core/mode.lua
 core/damage_type_colors.lua
+core/source_palette.lua
 core/metrics.lua
 observability/diagnostics.lua
 pipeline/acquisition.lua

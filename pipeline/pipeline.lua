@@ -92,7 +92,7 @@ end
 -- sourceName, sourceType, targetName, targetType, hitValue, powerType,
 -- damageType, log, sourceUnitId, targetUnitId, abilityId, overflow
 function M.dispatch_dmg_in(result, isError, _name, _g, _slot,
-                           _src, _srcType, _tgt, _tgtType, hit,
+                           srcName, _srcType, _tgt, _tgtType, hit,
                            _pt, damageType, _log, sourceUnitId, _tgtUid, abilityId, overflow)
   prof_enter("pipeline.combat_event")
   bump("engine.dmg_in.in")
@@ -104,14 +104,14 @@ function M.dispatch_dmg_in(result, isError, _name, _g, _slot,
 
   local t = now()
   prof_enter("pipeline.combat_event.acquisition")
-  local ev = Acquisition.acquire_dmg_in(t, hit, sourceUnitId, damageType, abilityId, result, overflow)
+  local ev = Acquisition.acquire_dmg_in(t, hit, sourceUnitId, srcName, damageType, abilityId, result, overflow)
   prof_exit("pipeline.combat_event.acquisition")
   run_stages(ev, "engine.dmg_in.accepted")
   prof_exit("pipeline.combat_event")
 end
 
 function M.dispatch_abs_in(result, isError, _name, _g, _slot,
-                           _src, _srcType, _tgt, _tgtType, hit,
+                           srcName, _srcType, _tgt, _tgtType, hit,
                            _pt, damageType, _log, sourceUnitId, _tgtUid, abilityId)
   prof_enter("pipeline.combat_event")
   bump("engine.abs_in.in")
@@ -123,7 +123,7 @@ function M.dispatch_abs_in(result, isError, _name, _g, _slot,
 
   local t = now()
   prof_enter("pipeline.combat_event.acquisition")
-  local ev = Acquisition.acquire_abs_in(t, hit, sourceUnitId, damageType, abilityId)
+  local ev = Acquisition.acquire_abs_in(t, hit, sourceUnitId, srcName, damageType, abilityId)
   prof_exit("pipeline.combat_event.acquisition")
   run_stages(ev, "engine.abs_in.accepted")
   prof_exit("pipeline.combat_event")

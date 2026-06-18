@@ -25,12 +25,14 @@ function M.init(capacity)
   for i = 1, capacity do
     -- hp_pct = min HP fraction in the interval (Survival); hp_drop = fraction of
     -- HP lost this tick (the fresh-damage red band). -1 hp_pct => unknown.
-    state.data[i] = { t = 0, DTPS = 0, ABS = 0, hp_pct = -1, hp_drop = 0, type_groups = { count = 0 } }
+    -- type_groups = stacked-by-damage-type; source_groups = stacked-by-attacker.
+    state.data[i] = { t = 0, DTPS = 0, ABS = 0, hp_pct = -1, hp_drop = 0,
+                      type_groups = { count = 0 }, source_groups = { count = 0 } }
   end
   log:info("init: capacity=", capacity)
 end
 
-function M.push(timestamp, DTPS, ABS, type_groups, hp_pct, hp_drop)
+function M.push(timestamp, DTPS, ABS, type_groups, hp_pct, hp_drop, source_groups)
   local slot   = state.data[state.write]
   slot.t       = timestamp
   slot.DTPS    = DTPS
@@ -47,6 +49,18 @@ function M.push(timestamp, DTPS, ABS, type_groups, hp_pct, hp_drop)
     d.r = s.r; d.g = s.g; d.b = s.b; d.a = s.a; d.share = s.share
   end
   dst.count = n
+
+  -- source_groups carry uid + name as well (for the BY_SOURCE legend / hover).
+  local sdst = slot.source_groups
+  local sn   = (source_groups and (source_groups.count or #source_groups)) or 0
+  for i = 1, sn do
+    local s = source_groups[i]
+    local d = sdst[i]
+    if d == nil then d = {}; sdst[i] = d end
+    d.r = s.r; d.g = s.g; d.b = s.b; d.a = s.a; d.share = s.share
+    d.uid = s.uid; d.name = s.name
+  end
+  sdst.count = sn
 
   state.write = (state.write % state.capacity) + 1
   if state.count < state.capacity then

@@ -61,8 +61,9 @@ local recording_start_ms = 0
 local VIEW_OUTCOME        = 1
 local VIEW_BY_DAMAGE_TYPE = 2
 local VIEW_SURVIVAL       = 3   -- HP green/red/grey bars
-local VIEW_MIN, VIEW_MAX  = VIEW_OUTCOME, VIEW_SURVIVAL
-local VIEW_LABELS         = { "OUTCOME", "TYPE", "SURVIVAL" }
+local VIEW_BY_SOURCE      = 4   -- stacked by attacker ("who's killing me")
+local VIEW_MIN, VIEW_MAX  = VIEW_OUTCOME, VIEW_BY_SOURCE
+local VIEW_LABELS         = { "OUTCOME", "TYPE", "SURVIVAL", "SOURCE" }
 local current_view        = VIEW_OUTCOME
 
 local prev_hp = -1   -- previous sample's hp_pct, for the fresh-loss (red) band
@@ -361,8 +362,11 @@ end
 local rt_xs, rt_top_hs              = {}, {}
 local ro_xs, ro_up_hs, ro_down_ys   = {}, {}, {}
 
--- View 2 — BY_DAMAGE_TYPE: stacked bars keyed by damageType, height ∝ DTPS.
-local function render_by_damage_type()
+-- Shared stacked-bar renderer: per-tick column of height ∝ DTPS, segmented by a
+-- group set. View 2 (BY_DAMAGE_TYPE) keys it on `type_groups`, View 4 (BY_SOURCE)
+-- on `source_groups` — identical geometry, different grouping. Each group slot
+-- carries its own colour, so the renderer never knows what it's stacking.
+local function render_stacked(groups_field)
   release_all_pools()
 
   local n = Verditer.TemporalBuffer.count()
@@ -392,7 +396,7 @@ local function render_by_damage_type()
     top_hs[i] = col_h
 
     local y_off  = 0
-    local groups = s.type_groups
+    local groups = s[groups_field]
     for g = 1, (groups.count or 0) do
       local grp   = groups[g]
       local seg_h = math_max(1, math_floor(col_h * grp.share + 0.5))
@@ -419,6 +423,13 @@ local function render_by_damage_type()
     end
   end
 end
+
+-- View 2 — BY_DAMAGE_TYPE: stacked by damageType (fire/shock/…).
+local function render_by_damage_type() render_stacked("type_groups") end
+
+-- View 4 — BY_SOURCE: stacked by attacker ("who's killing me"). Same column
+-- height (DTPS), segments coloured by the stable per-uid hash; top-7 + Other.
+local function render_by_source() render_stacked("source_groups") end
 
 -- View 1 — OUTCOME (diverging shared-axis): DTPS grows UP (red) from a shared
 -- baseline, ABS grows DOWN (blue). One frontier polyline per side. The shield
@@ -584,6 +595,8 @@ local function render_current_view()
     render_outcome()
   elseif current_view == VIEW_BY_DAMAGE_TYPE then
     render_by_damage_type()
+  elseif current_view == VIEW_BY_SOURCE then
+    render_by_source()
   else
     render_survival_bars()
   end
@@ -615,7 +628,8 @@ end
 local prof_enter = Verditer.Profiler.enter
 local prof_exit  = Verditer.Profiler.exit
 
-local sample_type_scratch = { count = 0 }
+local sample_type_scratch   = { count = 0 }
+local sample_source_scratch = { count = 0 }
 
 local function on_sample_update()
   prof_enter("graph.sample_tick")
@@ -623,11 +637,12 @@ local function on_sample_update()
   local dtps = Verditer.Metrics.DTPS(now)
   local abs  = Verditer.Metrics.ABS(now)
   Verditer.Metrics.type_groups_into(sample_type_scratch, now)
+  Verditer.Metrics.source_groups_into(sample_source_scratch, now)
 
   local hp_pct  = Verditer.Metrics.hp_sample()    -- min HP fraction over the interval
   local hp_drop = (prev_hp >= 0 and hp_pct >= 0) and math_max(0, prev_hp - hp_pct) or 0
   prev_hp = hp_pct
-  Verditer.TemporalBuffer.push(now, dtps, abs, sample_type_scratch, hp_pct, hp_drop)
+  Verditer.TemporalBuffer.push(now, dtps, abs, sample_type_scratch, hp_pct, hp_drop, sample_source_scratch)
 
   update_header(dtps + abs)
 

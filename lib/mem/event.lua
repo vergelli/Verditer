@@ -17,7 +17,8 @@ function Event.factory()
     amount         = 0,   -- hitValue
     damage_type    = 0,   -- DAMAGE_TYPE_*           (View 2 key)
     ability_id     = 0,   -- abilityId               (View 3 key; icon/name lookup)
-    source_unit_id = 0,   -- attacker; 0 => environmental/self
+    source_unit_id = 0,   -- attacker; 0 => environmental/self  (BY_SOURCE key)
+    source_name    = "",  -- attacker display name (raw; cleaned lazily for the legend)
     overflow       = 0,   -- overkill on lethal hit  (Death Recap); 0 otherwise
   }
 end
