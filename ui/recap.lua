@@ -45,11 +45,12 @@ local ICON_SZ   = 54
 local ATTACK_Y0 = 112
 local ROW_H     = 20
 local MAX_ROWS  = 6
-local LEAD_HDR_Y = 236
-local FILM_Y    = 254
-local FILM_H    = 44
-local PRESS_Y   = 306
-local TYPE_Y    = 324
+local LEAD_HDR_Y = 238
+local FILM_Y    = 256
+local FILM_H    = 56
+local FILM_X0   = 30    -- left gutter for the 100%/0% HP axis
+local PRESS_Y   = 348
+local TYPE_Y    = 366
 local MAX_TYPES = 6
 local LEAD_BARS = 80
 
@@ -162,6 +163,18 @@ local function build_content()
     controls.lead_bars[i] = b
   end
 
+  -- lead-up film labels: HP axis (100/0), time (Ns ago / death), explanatory caption
+  controls.lead_hp100  = mk_label("VerditerRecapHp100", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_RIGHT)
+  controls.lead_hp0    = mk_label("VerditerRecapHp0",   "ZoFontGameSmall", C_SUB, TEXT_ALIGN_RIGHT)
+  controls.lead_tleft  = mk_label("VerditerRecapTLeft", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
+  controls.lead_tright = mk_label("VerditerRecapTRight","ZoFontGameSmall", C_KB,  TEXT_ALIGN_RIGHT)
+  controls.lead_caption= mk_label("VerditerRecapCaption","ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
+  controls.lead_hp100:SetDimensions(FILM_X0 - 4, 12)
+  controls.lead_hp0:SetDimensions(FILM_X0 - 4, 12)
+  controls.lead_tleft:SetDimensions(80, 12)
+  controls.lead_tright:SetDimensions(80, 12)
+  controls.lead_caption:SetDimensions(480, 14)
+
   -- pressure line + type strip
   controls.pressure = mk_label("VerditerRecapPressure", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
   controls.pressure:SetAnchor(TOPLEFT, content, TOPLEFT, 2, PRESS_Y)
@@ -180,7 +193,15 @@ local function build_content()
   end
 end
 
--- render the lead-up "film": green HP bars + shield-break marker ──────────────
+local function hide_film_labels()
+  controls.lead_hp100:SetHidden(true);  controls.lead_hp0:SetHidden(true)
+  controls.lead_tleft:SetHidden(true);  controls.lead_tright:SetHidden(true)
+  controls.lead_caption:SetHidden(true)
+end
+
+-- render the lead-up "film": green HP bars over the last N seconds, with a labeled
+-- HP axis (100%/0%), time markers (Ns ago → death) and a one-line caption, so the
+-- green progression reads as "your HP melting into death". Blue line = shield broke.
 local function render_lead(rec)
   local content = controls.content
   local cw = content:GetWidth()
@@ -188,23 +209,24 @@ local function render_lead(rec)
 
   local baseline_y = FILM_Y + FILM_H
   controls.lead_base:ClearAnchors()
-  controls.lead_base:SetAnchor(TOPLEFT, content, TOPLEFT, 0, baseline_y)
+  controls.lead_base:SetAnchor(TOPLEFT, content, TOPLEFT, FILM_X0, baseline_y)
   controls.lead_base:SetHeight(1)
-  controls.lead_base:SetWidth(cw > 0 and cw or 1)
+  controls.lead_base:SetWidth((cw - FILM_X0) > 1 and (cw - FILM_X0) or 1)
   controls.lead_base:SetHidden(n == 0)
 
   for i = 1, LEAD_BARS do controls.lead_bars[i]:SetHidden(true) end
   controls.shield_line:SetHidden(true)
-  if n == 0 or cw <= 4 then return end
+  if n == 0 or cw <= FILM_X0 + 4 then hide_film_labels(); return end
 
-  local slot = cw / n
-  local gap  = (slot > 3) and 1 or 0
-  local draw = math_max(1, math_floor(n))
+  local film_w = cw - FILM_X0
+  local slot   = film_w / n
+  local gap    = (slot > 3) and 1 or 0
+  local draw   = math_max(1, math_floor(n))
   for i = 1, draw do
     if i > LEAD_BARS then break end
     local s    = rec.lead[i]
-    local left = math_floor((i - 1) * slot + 0.5)
-    local rite = math_floor(i * slot + 0.5)
+    local left = FILM_X0 + math_floor((i - 1) * slot + 0.5)
+    local rite = FILM_X0 + math_floor(i * slot + 0.5)
     local bw   = math_max(1, rite - left - gap)
     local hp   = s.hp or 0
     if hp < 0 then hp = 0 elseif hp > 1 then hp = 1 end
@@ -218,12 +240,35 @@ local function render_lead(rec)
 
   local sb = rec.lead.shield_break
   if sb and sb >= 1 and sb <= n then
-    local x = math_floor((sb - 0.5) * slot + 0.5)
+    local x = FILM_X0 + math_floor((sb - 0.5) * slot + 0.5)
     controls.shield_line:ClearAnchors()
     controls.shield_line:SetAnchor(TOPLEFT, content, TOPLEFT, x, FILM_Y)
     controls.shield_line:SetDimensions(1, FILM_H)
     controls.shield_line:SetHidden(false)
   end
+
+  -- HP axis (100% top, 0% at the baseline)
+  controls.lead_hp100:ClearAnchors()
+  controls.lead_hp100:SetAnchor(TOPLEFT, content, TOPLEFT, 0, FILM_Y - 1)
+  controls.lead_hp100:SetText("100%"); controls.lead_hp100:SetHidden(false)
+  controls.lead_hp0:ClearAnchors()
+  controls.lead_hp0:SetAnchor(TOPLEFT, content, TOPLEFT, 0, baseline_y - 11)
+  controls.lead_hp0:SetText("0%"); controls.lead_hp0:SetHidden(false)
+
+  -- time markers under the baseline
+  local secs = (Verditer.Constants.RECAP and Verditer.Constants.RECAP.LEAD_SECONDS) or 10
+  controls.lead_tleft:ClearAnchors()
+  controls.lead_tleft:SetAnchor(TOPLEFT, content, TOPLEFT, FILM_X0, baseline_y + 3)
+  controls.lead_tleft:SetText(secs .. "s ago"); controls.lead_tleft:SetHidden(false)
+  controls.lead_tright:ClearAnchors()
+  controls.lead_tright:SetAnchor(TOPRIGHT, content, TOPRIGHT, -2, baseline_y + 3)
+  controls.lead_tright:SetText("death"); controls.lead_tright:SetHidden(false)
+
+  -- one-line caption explaining the colours
+  controls.lead_caption:ClearAnchors()
+  controls.lead_caption:SetAnchor(TOPLEFT, content, TOPLEFT, FILM_X0, baseline_y + 17)
+  controls.lead_caption:SetText("Green = your HP each second.  Blue line = your shield broke.")
+  controls.lead_caption:SetHidden(false)
 end
 
 local function render_types(rec)
@@ -340,6 +385,18 @@ function M.on_move_stop()
   sv.recap.x, sv.recap.y = controls.window:GetCenter()
 end
 
+function M.on_resize_stop()
+  local sv = Verditer.SavedVars
+  if sv then
+    sv.recap = sv.recap or {}
+    sv.recap.w, sv.recap.h = controls.window:GetDimensions()
+  end
+  -- the film + columns are width-responsive; re-render the shown death
+  if not controls.window:IsHidden() and Verditer.DeathRecap.count() > 0 then
+    populate(Verditer.DeathRecap.get(Verditer.DeathRecap.selected_idx()))
+  end
+end
+
 function M.toggle()
   if controls.window:IsHidden() then
     if Verditer.DeathRecap.count() > 0 then
@@ -367,11 +424,17 @@ function M.init()
   VerditerRecapBg:SetCenterColor(TINT.r, TINT.g, TINT.b, 0.92)
   VerditerRecapBg:SetEdgeColor(C_CHROME.r, C_CHROME.g, C_CHROME.b, 1.0)
 
+  -- belt-and-suspenders: ensure move/resize are on regardless of XML quirks
+  controls.window:SetMovable(true)
+  controls.window:SetResizeHandleSize(8)
+  controls.window:SetDimensionConstraints(440, 380, 1000, 760)
+
   build_content()
 
   local sv = Verditer.SavedVars
   if sv then
     sv.recap = sv.recap or {}
+    if sv.recap.w then controls.window:SetDimensions(sv.recap.w, sv.recap.h) end
     if sv.recap.x then
       controls.window:ClearAnchors()
       controls.window:SetAnchor(CENTER, GuiRoot, TOPLEFT, sv.recap.x, sv.recap.y)

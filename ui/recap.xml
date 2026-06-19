@@ -11,10 +11,12 @@
                      hidden="true"
                      clampedToScreen="true"
                      movable="true"
-                     mouseEnabled="true">
+                     mouseEnabled="true"
+                     resizeHandleSize="8">
 
-      <Dimensions x="520" y="430"/>
+      <Dimensions x="520" y="470"/>
       <OnMoveStop>Verditer.Recap.on_move_stop()</OnMoveStop>
+      <OnResizeStop>Verditer.Recap.on_resize_stop()</OnResizeStop>
 
       <Controls>
 
