@@ -47,6 +47,7 @@ function M.push(timestamp, DTPS, ABS, type_groups, hp_pct, hp_drop, source_group
     local d = dst[i]
     if d == nil then d = {}; dst[i] = d end
     d.r = s.r; d.g = s.g; d.b = s.b; d.a = s.a; d.share = s.share
+    d.dt = s.dt   -- keep the damage-type id (CSV export names it; render uses colour)
   end
   dst.count = n
 
