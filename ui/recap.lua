@@ -9,6 +9,7 @@ local WM  = Verditer.zenimax.ui.WINDOW_MANAGER
 local GetString     = api.GetString
 local math_floor    = math.floor
 local math_max      = math.max
+local math_min      = math.min
 local string_format = string.format
 
 local TOPLEFT     = zc.TOPLEFT
@@ -48,13 +49,14 @@ local ATTACK_Y0 = 112
 local ROW_H     = 20
 local MAX_ROWS  = 6
 local LEAD_HDR_Y = 238
-local FILM_Y    = 256
-local FILM_H    = 56
-local FILM_X0   = 30    -- left gutter for the 100%/0% HP axis
-local PRESS_Y   = 334
-local TYPE_Y    = 352
-local MAX_TYPES = 6
-local LEAD_BARS = 80
+local FILM_Y     = 252
+local FILM_H     = 52
+local FILM_X0    = 28    -- left gutter for the 100%/0% HP axis
+local LEAD_BARS  = 80
+local PRESS_Y    = 324
+local TYPE_HDR_Y = 346
+local TYPE_Y     = 364
+local MAX_TYPES  = 6
 
 local controls = {}
 
@@ -83,6 +85,27 @@ local function mk_tex(name)
   t:SetTexture(FILL)
   t:SetHidden(true)
   return t
+end
+
+-- HP→colour gradient for the lead film: green (full) → amber (half) → red (near
+-- death). The silhouette visibly reddens as you die — danger reads in the colour,
+-- not just the height.
+local C_HP_FULL = { 0.30, 0.80, 0.45 }
+local C_HP_MID  = { 0.95, 0.78, 0.30 }
+local C_HP_LOW  = { 0.92, 0.26, 0.22 }
+local function hp_color(hp)
+  local a, b, t
+  if hp >= 0.5 then a, b, t = C_HP_MID, C_HP_FULL, (hp - 0.5) * 2
+  else              a, b, t = C_HP_LOW, C_HP_MID,  hp * 2 end
+  return a[1] + (b[1] - a[1]) * t,
+         a[2] + (b[2] - a[2]) * t,
+         a[3] + (b[3] - a[3]) * t
+end
+
+-- hex for ESO |c colour markup (recap hover colours the type name)
+local function hexcol(r, g, b)
+  return string_format("%02x%02x%02x",
+    math_floor((r or 1) * 255 + 0.5), math_floor((g or 1) * 255 + 0.5), math_floor((b or 1) * 255 + 0.5))
 end
 
 -- build static content controls (once) ───────────────────────────────────────
@@ -145,40 +168,40 @@ local function build_content()
     controls.rows[i] = { icon = icon, name = nm, dmg = dmg, kb = kb, who = who }
   end
 
-  -- lead-up header
+  -- HP lead-up film: a per-second HP silhouette (green→amber→red as you die),
+  -- with a 100/0 axis, a "death" marker and the shield-break line.
   controls.lead_hdr = mk_label("VerditerRecapLeadHdr", "ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
   controls.lead_hdr:SetAnchor(TOPLEFT, content, TOPLEFT, 2, LEAD_HDR_Y)
   controls.lead_hdr:SetDimensions(460, 16)
   controls.lead_hdr:SetText(GetString(VERDITER_RECAP_LEAD_UP))
 
-  -- lead baseline + shield-break marker
   controls.lead_base = mk_tex("VerditerRecapLeadBase")
   controls.lead_base:SetColor(C_GRID.r, C_GRID.g, C_GRID.b, C_GRID.a)
   controls.shield_line = mk_tex("VerditerRecapShieldLine")
   controls.shield_line:SetColor(C_SHIELD.r, C_SHIELD.g, C_SHIELD.b, C_SHIELD.a)
 
-  -- lead bars
   controls.lead_bars = {}
   for i = 1, LEAD_BARS do
-    local b = mk_tex("VerditerRecapLeadBar" .. i)
-    b:SetColor(C_HP.r, C_HP.g, C_HP.b, C_HP.a)
-    controls.lead_bars[i] = b
+    controls.lead_bars[i] = mk_tex("VerditerRecapLeadBar" .. i)   -- colour set per-frame
   end
 
-  -- lead-up film labels: HP axis (100/0), time (Ns ago / death), explanatory caption
   controls.lead_hp100  = mk_label("VerditerRecapHp100", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_RIGHT)
   controls.lead_hp0    = mk_label("VerditerRecapHp0",   "ZoFontGameSmall", C_SUB, TEXT_ALIGN_RIGHT)
-  controls.lead_tleft  = mk_label("VerditerRecapTLeft", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
   controls.lead_tright = mk_label("VerditerRecapTRight","ZoFontGameSmall", C_KB,  TEXT_ALIGN_RIGHT)
-  controls.lead_hp100:SetDimensions(FILM_X0 - 4, 12)
-  controls.lead_hp0:SetDimensions(FILM_X0 - 4, 12)
-  controls.lead_tleft:SetDimensions(80, 12)
-  controls.lead_tright:SetDimensions(80, 12)
+  controls.lead_hp100:SetDimensions(FILM_X0 - 3, 12)
+  controls.lead_hp0:SetDimensions(FILM_X0 - 3, 12)
+  controls.lead_tright:SetDimensions(60, 12)
 
-  -- pressure line + type strip
+  -- pressure line
   controls.pressure = mk_label("VerditerRecapPressure", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
   controls.pressure:SetAnchor(TOPLEFT, content, TOPLEFT, 2, PRESS_Y)
   controls.pressure:SetDimensions(480, 16)
+
+  -- by-type header (the colour strip below names each type on hover)
+  controls.types_hdr = mk_label("VerditerRecapTypesHdr", "ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
+  controls.types_hdr:SetAnchor(TOPLEFT, content, TOPLEFT, 2, TYPE_HDR_Y)
+  controls.types_hdr:SetDimensions(460, 16)
+  controls.types_hdr:SetText(GetString(VERDITER_RECAP_BREAKDOWN))
 
   controls.types = {}
   for i = 1, MAX_TYPES do
@@ -202,19 +225,19 @@ local function build_content()
 end
 
 local function hide_film_labels()
-  controls.lead_hp100:SetHidden(true);  controls.lead_hp0:SetHidden(true)
-  controls.lead_tleft:SetHidden(true);  controls.lead_tright:SetHidden(true)
+  controls.lead_hp100:SetHidden(true); controls.lead_hp0:SetHidden(true)
+  controls.lead_tright:SetHidden(true)
 end
 
--- render the lead-up "film": green HP bars over the last N seconds, with a labeled
--- HP axis (100%/0%), time markers (Ns ago → death) and a one-line caption, so the
--- green progression reads as "your HP melting into death". Blue line = shield broke.
+-- The HP film: a contiguous silhouette of HP each second, coloured green→amber→
+-- red by level (so it reddens into death). 100/0 axis on the left, a "death"
+-- marker on the right, and the blue shield-break line where the shield collapsed.
 local function render_lead(rec)
   local content = controls.content
   local cw = content:GetWidth()
   local n  = (rec.lead and rec.lead.count) or 0
-
   local baseline_y = FILM_Y + FILM_H
+
   controls.lead_base:ClearAnchors()
   controls.lead_base:SetAnchor(TOPLEFT, content, TOPLEFT, FILM_X0, baseline_y)
   controls.lead_base:SetHeight(1)
@@ -227,18 +250,18 @@ local function render_lead(rec)
 
   local film_w = cw - FILM_X0
   local slot   = film_w / n
-  local gap    = (slot > 3) and 1 or 0
-  local draw   = math_max(1, math_floor(n))
+  local draw   = math_min(n, LEAD_BARS)
   for i = 1, draw do
-    if i > LEAD_BARS then break end
     local s    = rec.lead[i]
     local left = FILM_X0 + math_floor((i - 1) * slot + 0.5)
     local rite = FILM_X0 + math_floor(i * slot + 0.5)
-    local bw   = math_max(1, rite - left - gap)
+    local bw   = math_max(1, rite - left)            -- contiguous (no gap) → solid silhouette
     local hp   = s.hp or 0
     if hp < 0 then hp = 0 elseif hp > 1 then hp = 1 end
     local h    = math_max(1, math_floor(hp * FILM_H + 0.5))
-    local b    = controls.lead_bars[i]
+    local r, g, bl = hp_color(hp)
+    local b = controls.lead_bars[i]
+    b:SetColor(r, g, bl, 0.95)
     b:ClearAnchors()
     b:SetAnchor(BOTTOMLEFT, content, TOPLEFT, left, baseline_y)
     b:SetDimensions(bw, h)
@@ -254,7 +277,6 @@ local function render_lead(rec)
     controls.shield_line:SetHidden(false)
   end
 
-  -- HP axis (100% top, 0% at the baseline)
   controls.lead_hp100:ClearAnchors()
   controls.lead_hp100:SetAnchor(TOPLEFT, content, TOPLEFT, 0, FILM_Y - 1)
   controls.lead_hp100:SetText("100%"); controls.lead_hp100:SetHidden(false)
@@ -262,11 +284,6 @@ local function render_lead(rec)
   controls.lead_hp0:SetAnchor(TOPLEFT, content, TOPLEFT, 0, baseline_y - 11)
   controls.lead_hp0:SetText("0%"); controls.lead_hp0:SetHidden(false)
 
-  -- time markers under the baseline
-  local secs = (Verditer.Constants.RECAP and Verditer.Constants.RECAP.LEAD_SECONDS) or 10
-  controls.lead_tleft:ClearAnchors()
-  controls.lead_tleft:SetAnchor(TOPLEFT, content, TOPLEFT, FILM_X0, baseline_y + 3)
-  controls.lead_tleft:SetText(secs .. "s ago"); controls.lead_tleft:SetHidden(false)
   controls.lead_tright:ClearAnchors()
   controls.lead_tright:SetAnchor(TOPRIGHT, content, TOPRIGHT, -2, baseline_y + 3)
   controls.lead_tright:SetText("death"); controls.lead_tright:SetHidden(false)
@@ -293,7 +310,9 @@ local function render_types(rec)
       t.lbl:SetAnchor(TOPLEFT, content, TOPLEFT, x + 13, TYPE_Y)
       t.lbl:SetText(string_format("%d%%", share))
       t.lbl:SetHidden(false)
-      t.tip = ((DTC and DTC.name) and DTC.name(g.dt) or "Damage") .. " — " .. share .. "%"
+      -- hover tooltip names the type in ITS OWN colour (Federico's ask)
+      local tnm = (DTC and DTC.name) and DTC.name(g.dt) or "Damage"
+      t.tip = string_format("|c%s%s|r  —  %d%%", hexcol(g.r, g.g, g.b), tnm, share)
       t.hit:ClearAnchors()
       t.hit:SetAnchor(TOPLEFT, content, TOPLEFT, x, TYPE_Y - 1)
       t.hit:SetDimensions(CELL, 16)
@@ -439,7 +458,7 @@ function M.init()
   controls.window:SetResizeHandleSize(8)
   -- min height holds ALL sections so the bottom (pressure + type strip) is never
   -- clipped by an over-shrunk window (Federico hit exactly this).
-  controls.window:SetDimensionConstraints(460, 460, 1000, 760)
+  controls.window:SetDimensionConstraints(460, 470, 1000, 760)
 
   build_content()
 
