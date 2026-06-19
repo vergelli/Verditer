@@ -102,6 +102,20 @@
           <OnClicked>Verditer.Graph.on_close_click()</OnClicked>
         </Button>
 
+        <!-- Export (CSV of the recorded session). Hidden until Stopped with data. -->
+        <Button name="$(parent)ExportBtn"
+                hidden="true"
+                mouseEnabled="true"
+                mouseOverBlendMode="ADD"
+                inherits="ZO_ButtonBehaviorClickSound">
+          <Anchor point="TOPRIGHT" offsetX="-64" offsetY="5"/>
+          <Dimensions x="22" y="22"/>
+          <Textures normal="EsoUI/Art/Buttons/large_downarrow_up.dds"
+                    pressed="EsoUI/Art/Buttons/large_downarrow_down.dds"
+                    mouseOver="EsoUI/Art/Buttons/large_downarrow_over.dds"/>
+          <OnClicked>Verditer.Graph.on_export_click()</OnClicked>
+        </Button>
+
         <!-- Controls row: Record / Stop / Flush. -->
         <Button name="$(parent)RecordBtn"
                 mouseEnabled="true"

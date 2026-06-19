@@ -52,6 +52,7 @@ ui/settings.xml
 ui/settings.lua
 ui/graph.xml
 ui/graph.lua
+ui/export.lua
 ui/recap.xml
 ui/recap.lua
 ui/logo.xml

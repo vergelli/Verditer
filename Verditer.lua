@@ -87,6 +87,10 @@ local function on_slash(input)
     Verditer.Recap.toggle() ; return
   end
 
+  if cmd == "export" then
+    Verditer.Export.show_session() ; return
+  end
+
   if cmd == "help" then
     d(GetString(VERDITER_HELP_HEADER))
     d(GetString(VERDITER_HELP_GRAPH))

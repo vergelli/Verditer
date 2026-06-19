@@ -36,12 +36,20 @@ local table_sort  = table.sort
 local table_remove = table.remove
 local math_max    = math.max
 local math_floor  = math.floor
+local math_ceil   = math.ceil
 
 local log = Verditer.Log.for_module("death_recap")
 
 -- state ───────────────────────────────────────────────────────────────────────
 local deaths  = {}    -- recent deaths, oldest..newest, capped at RECAP.MAX_DEATHS
 local sel_idx = 0     -- index currently shown in the window (1..#deaths)
+
+-- always-on lead-up ring: samples HP/DTPS/ABS at a fixed cadence so a death can
+-- freeze the last LEAD_SECONDS as the recap "film" — independent of whether the
+-- user is Recording. Slots are mutated in place (no per-tick alloc).
+local lead_ring = {}
+local lead_cap, lead_ms = 0, 250
+local lead_w, lead_n = 1, 0
 
 -- pressure snapshot scratch (reused; copied into each record)
 local type_scratch = { count = 0 }
@@ -86,6 +94,42 @@ local function attacker_name(i)
     nm = nm .. " (" .. zo_strformat(SI_UNIT_NAME, minionName) .. ")"
   end
   return nm
+end
+
+-- always-on lead ring tick (registered in init, runs forever, very cheap)
+local function lead_tick()
+  local now     = GetGameTimeMilliseconds()
+  local Metrics = Verditer.Metrics
+  local slot    = lead_ring[lead_w]
+  slot.t    = now
+  slot.hp   = Metrics.hp_current()
+  slot.dtps = Metrics.DTPS(now)
+  slot.abs  = Metrics.ABS(now)
+  lead_w = (lead_w % lead_cap) + 1
+  if lead_n < lead_cap then lead_n = lead_n + 1 end
+end
+
+-- Freeze the ring (oldest..newest) into rec.lead at the death instant. Also
+-- derives the TRUE peak DTPS over the window and the shield-break frame (the last
+-- sample where ABS was still being eaten — the moment the shield collapsed).
+local function freeze_lead(rec)
+  local lead   = rec.lead
+  local n      = lead_n
+  local cap    = lead_cap
+  local oldest = (n >= cap) and lead_w or 1
+  local peak, last_shield = 0, 0
+  for i = 1, n do
+    local idx = ((oldest - 1 + i - 1) % cap) + 1
+    local s   = lead_ring[idx]
+    local d   = lead[i]
+    if not d then d = {}; lead[i] = d end
+    d.t = s.t; d.hp = s.hp; d.dtps = s.dtps; d.abs = s.abs
+    if (s.dtps or 0) > peak then peak = s.dtps end
+    if (s.abs or 0) > 0 then last_shield = i end
+  end
+  lead.count        = n
+  lead.shield_break = (last_shield > 0 and last_shield < n) and last_shield or nil
+  if peak > 0 and rec.pressure then rec.pressure.peak_dtps = peak end
 end
 
 local function commit(rec)
@@ -154,9 +198,10 @@ local function on_player_dead()
     },
     attacks = {},
     killer  = nil,
-    lead    = { count = 0 },             -- filled for real in increment 2
+    lead    = {},
   }
   copy_types(rec.pressure.types, type_scratch)
+  freeze_lead(rec)   -- snapshot the lead-up film AT the death instant
 
   -- the server list is only readable after the engine's delay; one-shot timer
   ev.register_update("VerditerRecapServerRead", C.RECAP.SERVER_DELAY_MS, function()
@@ -228,6 +273,13 @@ function M.simulate()
 end
 
 function M.init()
+  -- size + start the always-on lead ring
+  lead_ms  = C.RECAP.LEAD_SAMPLE_MS or 250
+  lead_cap = math_max(2, math_ceil((C.RECAP.LEAD_SECONDS or 10) * 1000 / lead_ms))
+  for i = 1, lead_cap do lead_ring[i] = { t = 0, hp = -1, dtps = 0, abs = 0 } end
+  lead_w, lead_n = 1, 0
+  ev.register_update("VerditerRecapLead", lead_ms, lead_tick)
+
   ev.register("VerditerRecapDead", zc.EVENT_PLAYER_DEAD, on_player_dead)
-  log:info("init")
+  log:info("init: lead ring cap=", lead_cap, " @", lead_ms, "ms")
 end

@@ -44,7 +44,8 @@ Verditer.Constants = {
   -- short delay after EVENT_PLAYER_DEAD; ESO's own recap uses 2000 ms.
   RECAP = {
     SERVER_DELAY_MS = 2000,   -- match ESO's DEATH_RECAP_DELAY before reading
-    LEAD_SECONDS    = 10,     -- seconds of lead-up "film" to freeze (increment 2)
+    LEAD_SECONDS    = 10,     -- seconds of lead-up "film" to freeze
+    LEAD_SAMPLE_MS  = 250,    -- always-on lead ring cadence (10s / 250ms = 40 frames)
     MAX_DEATHS      = 5,      -- ring of recent deaths for prev/next navigation
     MAX_ATTACKS     = 6,      -- final-blows rows to show
   },

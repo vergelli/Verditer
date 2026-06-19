@@ -133,6 +133,17 @@ function M.max_health()
   return 0
 end
 
+-- Current HP fraction (0..1), polled fresh. Unlike hp_sample() this does NOT
+-- touch hp_min — it's for the always-on Death Recap lead ring, which must not
+-- disturb the graph's min-per-bucket reducer.
+function M.hp_current()
+  if GetUnitPower then
+    local cur, mx = GetUnitPower("player", HEALTH)
+    if mx and mx > 0 then return cur / mx end
+  end
+  return hp_cur
+end
+
 function M.ingest_abs_in(ev)
   if ev.amount > 0 then abs_in_buf:push(ev) else event_pool:release(ev) end
 end

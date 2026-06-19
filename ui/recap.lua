@@ -326,10 +326,11 @@ function M.on_close()
 end
 
 function M.on_export()
-  -- Stub for BACKLOG F (Stop-gated CSV export in its own pretty window). For now
-  -- a friendly notice so the button is honest, not dead.
-  Verditer.CopyBox.show("Verditer — Death Recap export",
-    "CSV export is coming (BACKLOG F). This will dump the recorded view buffers.")
+  -- Per-death export is a later idea; for now point at the real (release-safe)
+  -- Export window, which dumps the recorded session. (CopyBox is DEBUG-only.)
+  Verditer.Export.show_text(
+    "Per-death export is coming. For now this is the recorded session from the graph window.",
+    (Verditer.Export.build_csv()) or "")
 end
 
 function M.on_move_stop()

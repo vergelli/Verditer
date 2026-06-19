@@ -737,6 +737,10 @@ local function refresh_button_colors()
   local recording = Verditer.TemporalBuffer.is_recording()
   controls.btn_record:SetEnabled(not recording)
   controls.btn_stop:SetEnabled(recording)
+  -- Export appears only on a frozen session that actually has data (BACKLOG F).
+  if controls.btn_export then
+    controls.btn_export:SetHidden(recording or Verditer.TemporalBuffer.count() == 0)
+  end
 end
 
 local function persist_view()
@@ -838,6 +842,10 @@ function M.on_close_click()
   hide_legend()
 end
 
+function M.on_export_click()
+  Verditer.Export.show_session()
+end
+
 function M.on_move_stop()
   local sv = Verditer.SavedVars
   if not sv then return end
@@ -903,6 +911,7 @@ function M.init()
   controls.no_data       = VerditerGraphWindowViewportNoDataLabel
   controls.readout       = VerditerGraphWindowReadoutLabel
   controls.itp_icon      = VerditerGraphWindowItpIcon
+  controls.btn_export    = VerditerGraphWindowExportBtn
 
   local sv = Verditer.SavedVars
   sv.graph = sv.graph or {}
