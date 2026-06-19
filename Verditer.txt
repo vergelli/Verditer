@@ -46,11 +46,14 @@ pipeline/presentation.lua
 pipeline/pipeline.lua
 core/probe.lua
 core/temporal_buffer.lua
+core/death_recap.lua
 core/visibility.lua
 ui/settings.xml
 ui/settings.lua
 ui/graph.xml
 ui/graph.lua
+ui/recap.xml
+ui/recap.lua
 ui/logo.xml
 ui/logo.lua
 Verditer.lua

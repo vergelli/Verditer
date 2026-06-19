@@ -57,6 +57,11 @@ local function on_slash(input)
         d("[log] size " .. cur .. "/" .. cap .. "  (subcmd: flush | show | clear)")
       end
       return
+    elseif cmd == "recap" then
+      local sub = string_match(string_lower(input), "^%s*%S+%s+(%S+)") or ""
+      if sub == "test" or sub == "sim" then Verditer.DeathRecap.simulate()
+      else Verditer.Recap.toggle() end
+      return
     elseif cmd == "validate" then
       Verditer.Validation.dump_to_chat() ; return
     elseif cmd == "copy" then
@@ -76,6 +81,10 @@ local function on_slash(input)
 
   if cmd == "graph" then
     Verditer.Graph.toggle() ; return
+  end
+
+  if cmd == "recap" then
+    Verditer.Recap.toggle() ; return
   end
 
   if cmd == "help" then
@@ -104,6 +113,8 @@ local function on_addon_loaded()
   Verditer.Logo.init()
   Verditer.Settings.init()
   Verditer.Graph.init()
+  Verditer.Recap.init()        -- build the recap window before the capturer wires up
+  Verditer.DeathRecap.init()   -- subscribe EVENT_PLAYER_DEAD
   Verditer.Visibility.init()
 
   SLASH_COMMANDS[C.SLASH_COMMAND] = on_slash

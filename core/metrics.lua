@@ -23,6 +23,11 @@ local GetUnitPower
 local HEALTH
 local hp_cur, hp_min = -1, -1
 
+-- Most recent lethal overflow (overkill) for the Death Recap. The killing hit is
+-- the last dmg_in event carrying overflow>0; we keep it with its timestamp so the
+-- recap can read "how far past dead" only if it's fresh (within a few seconds).
+local last_overflow, last_overflow_ms = 0, 0
+
 local pairs     = pairs
 local math_floor = math.floor
 
@@ -103,7 +108,29 @@ end
 function M.window_seconds() return W_MS / 1000 end
 
 function M.ingest_dmg_in(ev)
-  if ev.amount > 0 then dmg_in_buf:push(ev) else event_pool:release(ev) end
+  if ev.amount > 0 then
+    if (ev.overflow or 0) > 0 then last_overflow = ev.overflow; last_overflow_ms = ev.t end
+    dmg_in_buf:push(ev)
+  else
+    event_pool:release(ev)
+  end
+end
+
+-- Death Recap helpers. recent_overflow returns the last lethal overkill if it
+-- happened within max_age_ms (else 0); max_health is the player's max HP pool.
+function M.recent_overflow(now_ms, max_age_ms)
+  if last_overflow_ms > 0 and (now_ms - last_overflow_ms) <= (max_age_ms or 3000) then
+    return last_overflow
+  end
+  return 0
+end
+
+function M.max_health()
+  if GetUnitPower then
+    local _cur, mx = GetUnitPower("player", HEALTH)
+    if mx and mx > 0 then return mx end
+  end
+  return 0
 end
 
 function M.ingest_abs_in(ev)

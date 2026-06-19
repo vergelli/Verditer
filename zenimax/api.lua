@@ -26,6 +26,14 @@ M.GetUnitAlliance         = GetUnitAlliance
 
 -- Health / survivability (View 4 groundwork, v0.2)
 M.GetUnitPower            = GetUnitPower
+M.IsUnitDead              = IsUnitDead
+
+-- Death Recap (BACKLOG C). Server-authoritative killing-attacks snapshot, read
+-- ~2 s after EVENT_PLAYER_DEAD (DEATH_RECAP_DELAY). See esoui deathrecap.lua.
+M.GetNumKillingAttacks          = GetNumKillingAttacks
+M.GetKillingAttackInfo          = GetKillingAttackInfo
+M.DoesKillingAttackHaveAttacker = DoesKillingAttackHaveAttacker
+M.GetKillingAttackerInfo        = GetKillingAttackerInfo
 
 M.GetCurrentMapZoneIndex  = GetCurrentMapZoneIndex
 M.GetZoneNameByIndex      = GetZoneNameByIndex

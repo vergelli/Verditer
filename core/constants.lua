@@ -40,6 +40,15 @@ Verditer.Constants = {
     ABS_IN = 2,   -- ate by shield (ABS)
   },
 
+  -- Death Recap (BACKLOG C). The server killing-attacks list is only readable a
+  -- short delay after EVENT_PLAYER_DEAD; ESO's own recap uses 2000 ms.
+  RECAP = {
+    SERVER_DELAY_MS = 2000,   -- match ESO's DEATH_RECAP_DELAY before reading
+    LEAD_SECONDS    = 10,     -- seconds of lead-up "film" to freeze (increment 2)
+    MAX_DEATHS      = 5,      -- ring of recent deaths for prev/next navigation
+    MAX_ATTACKS     = 6,      -- final-blows rows to show
+  },
+
   -- Brand palette (HANDOFF §2). True blue, NOT the aquamarine namesake.
   BRAND = {
     BLUE      = { r = 0.18,  g = 0.42,  b = 0.88,  a = 1.0 },  -- #2E6BE0 primary

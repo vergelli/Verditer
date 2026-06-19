@@ -1,0 +1,381 @@
+Verditer = Verditer or {}
+Verditer.Recap = {}
+local M = Verditer.Recap
+
+local api = Verditer.zenimax.api
+local zc  = Verditer.zenimax.constants
+local WM  = Verditer.zenimax.ui.WINDOW_MANAGER
+
+local GetString     = api.GetString
+local math_floor    = math.floor
+local math_max      = math.max
+local string_format = string.format
+
+local TOPLEFT     = zc.TOPLEFT
+local TOPRIGHT    = zc.TOPRIGHT
+local BOTTOMLEFT  = zc.BOTTOMLEFT
+local CENTER      = zc.CENTER
+local GuiRoot     = zc.GuiRoot
+local CT_TEXTURE  = zc.CT_TEXTURE
+local CT_LABEL    = zc.CT_LABEL
+local TEXT_ALIGN_LEFT   = zc.TEXT_ALIGN_LEFT
+local TEXT_ALIGN_RIGHT  = zc.TEXT_ALIGN_RIGHT
+local TEXT_ALIGN_CENTER = zc.TEXT_ALIGN_CENTER
+
+local log  = Verditer.Log.for_module("recap")
+local TINT = Verditer.Constants.BRAND.TINT
+
+local FILL = "EsoUI/Art/UnitAttributeVisualizer/attributeBar_dynamic_fill.dds"
+
+-- palette
+local C_DIED   = { r = 0.92, g = 0.30, b = 0.25, a = 1.00 }
+local C_TITLE  = { r = 0.82, g = 0.88, b = 1.00, a = 1.00 }
+local C_SUB    = { r = 0.72, g = 0.76, b = 0.84, a = 1.00 }
+local C_HEADER = { r = 0.55, g = 0.70, b = 1.00, a = 0.90 }
+local C_DMG    = { r = 0.95, g = 0.85, b = 0.55, a = 1.00 }
+local C_KB     = { r = 0.96, g = 0.36, b = 0.30, a = 1.00 }
+local C_NAME   = { r = 0.90, g = 0.92, b = 0.96, a = 1.00 }
+local C_HP     = { r = 0.30, g = 0.80, b = 0.45, a = 0.95 }
+local C_SHIELD = { r = 0.44, g = 0.66, b = 1.00, a = 0.95 }
+local C_CHROME = { r = 0.46, g = 0.60, b = 0.95, a = 0.80 }
+local C_GRID   = { r = 0.55, g = 0.58, b = 0.70, a = 0.25 }
+
+-- layout (within Content)
+local ICON_SZ   = 54
+local ATTACK_Y0 = 112
+local ROW_H     = 20
+local MAX_ROWS  = 6
+local LEAD_HDR_Y = 236
+local FILM_Y    = 254
+local FILM_H    = 44
+local PRESS_Y   = 306
+local TYPE_Y    = 324
+local MAX_TYPES = 6
+local LEAD_BARS = 80
+
+local controls = {}
+
+-- helpers ───────────────────────────────────────────────────────────────────
+local function abbr(v)
+  return ZO_AbbreviateAndLocalizeNumber(math_floor(v + 0.5), 1, false)
+end
+
+local function commafy(n)
+  n = math_floor(n + 0.5)
+  if ZO_CommaDelimitNumber then return ZO_CommaDelimitNumber(n) end
+  return tostring(n)
+end
+
+local function mk_label(name, font, col, align)
+  local l = WM:CreateControl(name, controls.content, CT_LABEL)
+  l:SetFont(font)
+  l:SetHorizontalAlignment(align or TEXT_ALIGN_LEFT)
+  l:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+  l:SetColor(col.r, col.g, col.b, col.a)
+  return l
+end
+
+local function mk_tex(name)
+  local t = WM:CreateControl(name, controls.content, CT_TEXTURE)
+  t:SetTexture(FILL)
+  t:SetHidden(true)
+  return t
+end
+
+-- build static content controls (once) ───────────────────────────────────────
+local function build_content()
+  local content = controls.content
+
+  -- verdict
+  controls.killer_icon = WM:CreateControl("VerditerRecapKillerIcon", content, CT_TEXTURE)
+  controls.killer_icon:SetDimensions(ICON_SZ, ICON_SZ)
+  controls.killer_icon:SetAnchor(TOPLEFT, content, TOPLEFT, 2, 6)
+
+  controls.died = mk_label("VerditerRecapDied", "ZoFontWinH1", C_DIED, TEXT_ALIGN_LEFT)
+  controls.died:SetAnchor(TOPLEFT, content, TOPLEFT, 66, 0)
+  controls.died:SetDimensions(220, 30)
+  controls.died:SetText(GetString(VERDITER_RECAP_DIED))
+
+  controls.k_ability = mk_label("VerditerRecapAbility", "ZoFontWinH4", C_NAME, TEXT_ALIGN_LEFT)
+  controls.k_ability:SetAnchor(TOPLEFT, content, TOPLEFT, 66, 32)
+  controls.k_ability:SetDimensions(300, 20)
+
+  controls.k_from = mk_label("VerditerRecapFrom", "ZoFontGame", C_SUB, TEXT_ALIGN_LEFT)
+  controls.k_from:SetAnchor(TOPLEFT, content, TOPLEFT, 66, 54)
+  controls.k_from:SetDimensions(360, 18)
+
+  controls.overkill = mk_label("VerditerRecapOverkill", "ZoFontGameBold", C_DIED, TEXT_ALIGN_RIGHT)
+  controls.overkill:SetAnchor(TOPRIGHT, content, TOPRIGHT, 0, 6)
+  controls.overkill:SetDimensions(180, 20)
+
+  -- final blows header
+  controls.fb_hdr = mk_label("VerditerRecapFbHdr", "ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
+  controls.fb_hdr:SetAnchor(TOPLEFT, content, TOPLEFT, 2, 90)
+  controls.fb_hdr:SetDimensions(460, 16)
+  controls.fb_hdr:SetText(GetString(VERDITER_RECAP_FINAL_BLOWS))
+
+  -- attack rows
+  controls.rows = {}
+  for i = 1, MAX_ROWS do
+    local y = ATTACK_Y0 + (i - 1) * ROW_H
+    local icon = WM:CreateControl("VerditerRecapRow" .. i .. "Icon", content, CT_TEXTURE)
+    icon:SetDimensions(18, 18)
+    icon:SetAnchor(TOPLEFT, content, TOPLEFT, 4, y)
+    icon:SetHidden(true)
+
+    local nm = mk_label("VerditerRecapRow" .. i .. "Name", "ZoFontGame", C_NAME, TEXT_ALIGN_LEFT)
+    nm:SetAnchor(TOPLEFT, content, TOPLEFT, 28, y)
+    nm:SetDimensions(176, ROW_H)
+
+    local dmg = mk_label("VerditerRecapRow" .. i .. "Dmg", "ZoFontGame", C_DMG, TEXT_ALIGN_RIGHT)
+    dmg:SetAnchor(TOPLEFT, content, TOPLEFT, 196, y)
+    dmg:SetDimensions(74, ROW_H)
+
+    local kb = mk_label("VerditerRecapRow" .. i .. "Kb", "ZoFontGameSmall", C_KB, TEXT_ALIGN_CENTER)
+    kb:SetAnchor(TOPLEFT, content, TOPLEFT, 274, y)
+    kb:SetDimensions(26, ROW_H)
+
+    local who = mk_label("VerditerRecapRow" .. i .. "Who", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
+    who:SetAnchor(TOPLEFT, content, TOPLEFT, 304, y)
+    who:SetDimensions(180, ROW_H)
+
+    controls.rows[i] = { icon = icon, name = nm, dmg = dmg, kb = kb, who = who }
+  end
+
+  -- lead-up header
+  controls.lead_hdr = mk_label("VerditerRecapLeadHdr", "ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
+  controls.lead_hdr:SetAnchor(TOPLEFT, content, TOPLEFT, 2, LEAD_HDR_Y)
+  controls.lead_hdr:SetDimensions(460, 16)
+  controls.lead_hdr:SetText(GetString(VERDITER_RECAP_LEAD_UP))
+
+  -- lead baseline + shield-break marker
+  controls.lead_base = mk_tex("VerditerRecapLeadBase")
+  controls.lead_base:SetColor(C_GRID.r, C_GRID.g, C_GRID.b, C_GRID.a)
+  controls.shield_line = mk_tex("VerditerRecapShieldLine")
+  controls.shield_line:SetColor(C_SHIELD.r, C_SHIELD.g, C_SHIELD.b, C_SHIELD.a)
+
+  -- lead bars
+  controls.lead_bars = {}
+  for i = 1, LEAD_BARS do
+    local b = mk_tex("VerditerRecapLeadBar" .. i)
+    b:SetColor(C_HP.r, C_HP.g, C_HP.b, C_HP.a)
+    controls.lead_bars[i] = b
+  end
+
+  -- pressure line + type strip
+  controls.pressure = mk_label("VerditerRecapPressure", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
+  controls.pressure:SetAnchor(TOPLEFT, content, TOPLEFT, 2, PRESS_Y)
+  controls.pressure:SetDimensions(480, 16)
+
+  controls.types = {}
+  for i = 1, MAX_TYPES do
+    local sw = WM:CreateControl("VerditerRecapType" .. i .. "Sw", content, CT_TEXTURE)
+    sw:SetTexture(FILL)
+    sw:SetDimensions(10, 10)
+    sw:SetHidden(true)
+    local lbl = mk_label("VerditerRecapType" .. i .. "Lbl", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
+    lbl:SetDimensions(66, 14)
+    lbl:SetHidden(true)
+    controls.types[i] = { sw = sw, lbl = lbl }
+  end
+end
+
+-- render the lead-up "film": green HP bars + shield-break marker ──────────────
+local function render_lead(rec)
+  local content = controls.content
+  local cw = content:GetWidth()
+  local n  = (rec.lead and rec.lead.count) or 0
+
+  local baseline_y = FILM_Y + FILM_H
+  controls.lead_base:ClearAnchors()
+  controls.lead_base:SetAnchor(TOPLEFT, content, TOPLEFT, 0, baseline_y)
+  controls.lead_base:SetHeight(1)
+  controls.lead_base:SetWidth(cw > 0 and cw or 1)
+  controls.lead_base:SetHidden(n == 0)
+
+  for i = 1, LEAD_BARS do controls.lead_bars[i]:SetHidden(true) end
+  controls.shield_line:SetHidden(true)
+  if n == 0 or cw <= 4 then return end
+
+  local slot = cw / n
+  local gap  = (slot > 3) and 1 or 0
+  local draw = math_max(1, math_floor(n))
+  for i = 1, draw do
+    if i > LEAD_BARS then break end
+    local s    = rec.lead[i]
+    local left = math_floor((i - 1) * slot + 0.5)
+    local rite = math_floor(i * slot + 0.5)
+    local bw   = math_max(1, rite - left - gap)
+    local hp   = s.hp or 0
+    if hp < 0 then hp = 0 elseif hp > 1 then hp = 1 end
+    local h    = math_max(1, math_floor(hp * FILM_H + 0.5))
+    local b    = controls.lead_bars[i]
+    b:ClearAnchors()
+    b:SetAnchor(BOTTOMLEFT, content, TOPLEFT, left, baseline_y)
+    b:SetDimensions(bw, h)
+    b:SetHidden(false)
+  end
+
+  local sb = rec.lead.shield_break
+  if sb and sb >= 1 and sb <= n then
+    local x = math_floor((sb - 0.5) * slot + 0.5)
+    controls.shield_line:ClearAnchors()
+    controls.shield_line:SetAnchor(TOPLEFT, content, TOPLEFT, x, FILM_Y)
+    controls.shield_line:SetDimensions(1, FILM_H)
+    controls.shield_line:SetHidden(false)
+  end
+end
+
+local function render_types(rec)
+  local content = controls.content
+  local groups  = rec.pressure and rec.pressure.types
+  local n = (groups and groups.count) or 0
+  if n > MAX_TYPES then n = MAX_TYPES end
+  local x = 2
+  for i = 1, MAX_TYPES do
+    local t = controls.types[i]
+    if i <= n then
+      local g = groups[i]
+      t.sw:ClearAnchors()
+      t.sw:SetAnchor(TOPLEFT, content, TOPLEFT, x, TYPE_Y + 1)
+      t.sw:SetColor(g.r, g.g, g.b, 1.0)
+      t.sw:SetHidden(false)
+      t.lbl:ClearAnchors()
+      t.lbl:SetAnchor(TOPLEFT, content, TOPLEFT, x + 13, TYPE_Y)
+      t.lbl:SetText(string_format("%d%%", math_floor((g.share or 0) * 100 + 0.5)))
+      t.lbl:SetHidden(false)
+      x = x + 13 + 30
+    else
+      t.sw:SetHidden(true)
+      t.lbl:SetHidden(true)
+    end
+  end
+end
+
+-- populate the whole window from a record ─────────────────────────────────────
+local function populate(rec)
+  local k = rec.killer
+  controls.killer_icon:SetTexture(k and k.icon or FILL)
+  controls.k_ability:SetText(k and k.name ~= "" and k.name or GetString(VERDITER_RECAP_UNKNOWN))
+
+  local from = (k and k.attacker ~= "" and k.attacker) or nil
+  controls.k_from:SetText(from and (GetString(VERDITER_RECAP_FROM) .. " " .. from)
+                               or GetString(VERDITER_RECAP_FROM_ENV))
+
+  if (rec.overkill_pct or 0) > 0 then
+    controls.overkill:SetText(string_format(GetString(VERDITER_RECAP_OVERKILL),
+                                            math_floor(rec.overkill_pct * 100 + 0.5)))
+    controls.overkill:SetHidden(false)
+  else
+    controls.overkill:SetHidden(true)
+  end
+
+  controls.zone:SetText(rec.zone or "")
+
+  for i = 1, MAX_ROWS do
+    local row = controls.rows[i]
+    local a   = rec.attacks[i]
+    if a then
+      row.icon:SetTexture(a.icon or FILL)
+      row.icon:SetHidden(false)
+      local nm = a.name
+      if a.hits and a.hits > 1 then nm = nm .. " x" .. a.hits end
+      row.name:SetText(nm)
+      row.dmg:SetText(commafy(a.dmg))
+      row.kb:SetText(a.kb and GetString(VERDITER_RECAP_KB) or "")
+      row.who:SetText(a.attacker or "")
+      row.name:SetHidden(false); row.dmg:SetHidden(false)
+      row.kb:SetHidden(false);   row.who:SetHidden(false)
+    else
+      row.icon:SetHidden(true)
+      row.name:SetHidden(true); row.dmg:SetHidden(true)
+      row.kb:SetHidden(true);   row.who:SetHidden(true)
+    end
+  end
+
+  local p = rec.pressure or {}
+  controls.pressure:SetText(string_format(GetString(VERDITER_RECAP_PRESSURE),
+                            abbr(p.peak_dtps or 0), p.attackers or 0, abbr(p.abs or 0)))
+
+  render_lead(rec)
+  render_types(rec)
+
+  local idx, total = Verditer.DeathRecap.selected_idx(), Verditer.DeathRecap.count()
+  controls.index:SetText(string_format("%d / %d", idx, total))
+end
+
+-- public ──────────────────────────────────────────────────────────────────────
+function M.show_record(idx)
+  if not Verditer.DeathRecap.select(idx) then return end
+  controls.window:SetHidden(false)
+  populate(Verditer.DeathRecap.get(idx))
+end
+
+function M.on_prev()
+  local i = Verditer.DeathRecap.selected_idx() - 1
+  if i >= 1 then M.show_record(i) end
+end
+
+function M.on_next()
+  local i = Verditer.DeathRecap.selected_idx() + 1
+  if i <= Verditer.DeathRecap.count() then M.show_record(i) end
+end
+
+function M.on_close()
+  controls.window:SetHidden(true)
+end
+
+function M.on_export()
+  -- Stub for BACKLOG F (Stop-gated CSV export in its own pretty window). For now
+  -- a friendly notice so the button is honest, not dead.
+  Verditer.CopyBox.show("Verditer — Death Recap export",
+    "CSV export is coming (BACKLOG F). This will dump the recorded view buffers.")
+end
+
+function M.on_move_stop()
+  local sv = Verditer.SavedVars
+  if not sv then return end
+  sv.recap = sv.recap or {}
+  sv.recap.x, sv.recap.y = controls.window:GetCenter()
+end
+
+function M.toggle()
+  if controls.window:IsHidden() then
+    if Verditer.DeathRecap.count() > 0 then
+      M.show_record(Verditer.DeathRecap.selected_idx())
+    end
+  else
+    controls.window:SetHidden(true)
+  end
+end
+
+function M.init()
+  controls.window  = VerditerRecap
+  controls.content = VerditerRecapContent
+  controls.title   = VerditerRecapTitleLabel
+  controls.zone    = VerditerRecapZoneLabel
+  controls.index   = VerditerRecapIndexLabel
+  controls.export  = VerditerRecapExportBtn
+
+  controls.title:SetText(GetString(VERDITER_RECAP_TITLE))
+  controls.title:SetColor(C_TITLE.r, C_TITLE.g, C_TITLE.b, C_TITLE.a)
+  controls.zone:SetColor(C_SUB.r, C_SUB.g, C_SUB.b, C_SUB.a)
+  controls.index:SetColor(C_SUB.r, C_SUB.g, C_SUB.b, C_SUB.a)
+  controls.export:SetText(GetString(VERDITER_RECAP_EXPORT))
+
+  VerditerRecapBg:SetCenterColor(TINT.r, TINT.g, TINT.b, 0.92)
+  VerditerRecapBg:SetEdgeColor(C_CHROME.r, C_CHROME.g, C_CHROME.b, 1.0)
+
+  build_content()
+
+  local sv = Verditer.SavedVars
+  if sv then
+    sv.recap = sv.recap or {}
+    if sv.recap.x then
+      controls.window:ClearAnchors()
+      controls.window:SetAnchor(CENTER, GuiRoot, TOPLEFT, sv.recap.x, sv.recap.y)
+    end
+  end
+
+  log:info("init")
+end
