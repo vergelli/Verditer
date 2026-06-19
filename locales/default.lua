@@ -36,7 +36,7 @@ ZO_CreateStringId("VERDITER_GRAPH_NO_DATA", "No data — press Record while taki
 ZO_CreateStringId("VERDITER_RECAP_TITLE",       "Death Recap")
 ZO_CreateStringId("VERDITER_RECAP_DIED",        "YOU DIED")
 ZO_CreateStringId("VERDITER_RECAP_FINAL_BLOWS", "FINAL BLOWS")
-ZO_CreateStringId("VERDITER_RECAP_LEAD_UP",     "HOW YOUR HP FELL")
+ZO_CreateStringId("VERDITER_RECAP_LEAD_UP",     "HP")
 ZO_CreateStringId("VERDITER_RECAP_FROM",        "from")
 ZO_CreateStringId("VERDITER_RECAP_FROM_ENV",    "from the environment")
 ZO_CreateStringId("VERDITER_RECAP_UNKNOWN",     "Unknown")

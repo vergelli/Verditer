@@ -13,11 +13,13 @@ local string_format = string.format
 
 local TOPLEFT     = zc.TOPLEFT
 local TOPRIGHT    = zc.TOPRIGHT
+local TOP         = zc.TOP
 local BOTTOMLEFT  = zc.BOTTOMLEFT
 local CENTER      = zc.CENTER
 local GuiRoot     = zc.GuiRoot
 local CT_TEXTURE  = zc.CT_TEXTURE
 local CT_LABEL    = zc.CT_LABEL
+local CT_CONTROL  = zc.CT_CONTROL
 local TEXT_ALIGN_LEFT   = zc.TEXT_ALIGN_LEFT
 local TEXT_ALIGN_RIGHT  = zc.TEXT_ALIGN_RIGHT
 local TEXT_ALIGN_CENTER = zc.TEXT_ALIGN_CENTER
@@ -49,8 +51,8 @@ local LEAD_HDR_Y = 238
 local FILM_Y    = 256
 local FILM_H    = 56
 local FILM_X0   = 30    -- left gutter for the 100%/0% HP axis
-local PRESS_Y   = 348
-local TYPE_Y    = 366
+local PRESS_Y   = 334
+local TYPE_Y    = 352
 local MAX_TYPES = 6
 local LEAD_BARS = 80
 
@@ -168,12 +170,10 @@ local function build_content()
   controls.lead_hp0    = mk_label("VerditerRecapHp0",   "ZoFontGameSmall", C_SUB, TEXT_ALIGN_RIGHT)
   controls.lead_tleft  = mk_label("VerditerRecapTLeft", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
   controls.lead_tright = mk_label("VerditerRecapTRight","ZoFontGameSmall", C_KB,  TEXT_ALIGN_RIGHT)
-  controls.lead_caption= mk_label("VerditerRecapCaption","ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
   controls.lead_hp100:SetDimensions(FILM_X0 - 4, 12)
   controls.lead_hp0:SetDimensions(FILM_X0 - 4, 12)
   controls.lead_tleft:SetDimensions(80, 12)
   controls.lead_tright:SetDimensions(80, 12)
-  controls.lead_caption:SetDimensions(480, 14)
 
   -- pressure line + type strip
   controls.pressure = mk_label("VerditerRecapPressure", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
@@ -187,16 +187,23 @@ local function build_content()
     sw:SetDimensions(10, 10)
     sw:SetHidden(true)
     local lbl = mk_label("VerditerRecapType" .. i .. "Lbl", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
-    lbl:SetDimensions(66, 14)
+    lbl:SetDimensions(40, 14)
     lbl:SetHidden(true)
-    controls.types[i] = { sw = sw, lbl = lbl }
+    -- invisible hit-area over swatch+label → hover shows the damage-type name.
+    -- (First taste of the hover feature, on the simplest surface — BACKLOG D.)
+    local hit = WM:CreateControl("VerditerRecapType" .. i .. "Hit", content, CT_CONTROL)
+    hit:SetMouseEnabled(true)
+    hit:SetHidden(true)
+    local slot = { sw = sw, lbl = lbl, hit = hit, tip = "" }
+    hit:SetHandler("OnMouseEnter", function(self) ZO_Tooltips_ShowTextTooltip(self, TOP, slot.tip) end)
+    hit:SetHandler("OnMouseExit",  function() ZO_Tooltips_HideTextTooltip() end)
+    controls.types[i] = slot
   end
 end
 
 local function hide_film_labels()
   controls.lead_hp100:SetHidden(true);  controls.lead_hp0:SetHidden(true)
   controls.lead_tleft:SetHidden(true);  controls.lead_tright:SetHidden(true)
-  controls.lead_caption:SetHidden(true)
 end
 
 -- render the lead-up "film": green HP bars over the last N seconds, with a labeled
@@ -263,12 +270,6 @@ local function render_lead(rec)
   controls.lead_tright:ClearAnchors()
   controls.lead_tright:SetAnchor(TOPRIGHT, content, TOPRIGHT, -2, baseline_y + 3)
   controls.lead_tright:SetText("death"); controls.lead_tright:SetHidden(false)
-
-  -- one-line caption explaining the colours
-  controls.lead_caption:ClearAnchors()
-  controls.lead_caption:SetAnchor(TOPLEFT, content, TOPLEFT, FILM_X0, baseline_y + 17)
-  controls.lead_caption:SetText("Green = your HP each second.  Blue line = your shield broke.")
-  controls.lead_caption:SetHidden(false)
 end
 
 local function render_types(rec)
@@ -276,23 +277,32 @@ local function render_types(rec)
   local groups  = rec.pressure and rec.pressure.types
   local n = (groups and groups.count) or 0
   if n > MAX_TYPES then n = MAX_TYPES end
+  local DTC = Verditer.DamageTypeColors
+  local CELL = 13 + 34
   local x = 2
   for i = 1, MAX_TYPES do
     local t = controls.types[i]
     if i <= n then
-      local g = groups[i]
+      local g     = groups[i]
+      local share = math_floor((g.share or 0) * 100 + 0.5)
       t.sw:ClearAnchors()
       t.sw:SetAnchor(TOPLEFT, content, TOPLEFT, x, TYPE_Y + 1)
       t.sw:SetColor(g.r, g.g, g.b, 1.0)
       t.sw:SetHidden(false)
       t.lbl:ClearAnchors()
       t.lbl:SetAnchor(TOPLEFT, content, TOPLEFT, x + 13, TYPE_Y)
-      t.lbl:SetText(string_format("%d%%", math_floor((g.share or 0) * 100 + 0.5)))
+      t.lbl:SetText(string_format("%d%%", share))
       t.lbl:SetHidden(false)
-      x = x + 13 + 30
+      t.tip = ((DTC and DTC.name) and DTC.name(g.dt) or "Damage") .. " — " .. share .. "%"
+      t.hit:ClearAnchors()
+      t.hit:SetAnchor(TOPLEFT, content, TOPLEFT, x, TYPE_Y - 1)
+      t.hit:SetDimensions(CELL, 16)
+      t.hit:SetHidden(false)
+      x = x + CELL
     else
       t.sw:SetHidden(true)
       t.lbl:SetHidden(true)
+      t.hit:SetHidden(true)
     end
   end
 end
@@ -427,7 +437,9 @@ function M.init()
   -- belt-and-suspenders: ensure move/resize are on regardless of XML quirks
   controls.window:SetMovable(true)
   controls.window:SetResizeHandleSize(8)
-  controls.window:SetDimensionConstraints(440, 380, 1000, 760)
+  -- min height holds ALL sections so the bottom (pressure + type strip) is never
+  -- clipped by an over-shrunk window (Federico hit exactly this).
+  controls.window:SetDimensionConstraints(460, 460, 1000, 760)
 
   build_content()
 

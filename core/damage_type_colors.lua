@@ -44,3 +44,19 @@ function DTC.lookup(dt)
   if Verditer.Diagnostics then Verditer.Diagnostics.bump("metrics.damage_type_fallback") end
   return FALLBACK
 end
+
+-- Short display names for the 13 types (CSV export + recap hover). Defensive
+-- build (skip nil enum keys), single source of truth so export/recap don't drift.
+local DT_NAMES = {}
+local function nm(dt, s) if dt ~= nil then DT_NAMES[dt] = s end end
+nm(zc.DAMAGE_TYPE_GENERIC, "Generic")  nm(zc.DAMAGE_TYPE_PHYSICAL, "Physical")
+nm(zc.DAMAGE_TYPE_FIRE,    "Fire")     nm(zc.DAMAGE_TYPE_SHOCK,    "Shock")
+nm(zc.DAMAGE_TYPE_OBLIVION,"Oblivion") nm(zc.DAMAGE_TYPE_COLD,     "Cold")
+nm(zc.DAMAGE_TYPE_EARTH,   "Earth")    nm(zc.DAMAGE_TYPE_MAGIC,    "Magic")
+nm(zc.DAMAGE_TYPE_DROWN,   "Drown")    nm(zc.DAMAGE_TYPE_DISEASE,  "Disease")
+nm(zc.DAMAGE_TYPE_POISON,  "Poison")   nm(zc.DAMAGE_TYPE_BLEED,    "Bleed")
+nm(zc.DAMAGE_TYPE_NONE,    "None")
+
+function DTC.name(dt)
+  return DT_NAMES[dt] or "Unknown"
+end
