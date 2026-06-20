@@ -39,10 +39,16 @@ local function on_slash(input)
       local n = tonumber(string_match(input, "^%s*%S+%s+(%d+)")) or 1000
       Verditer.Diagnostics.gc_probe(n) ; return
     elseif cmd == "bench" then
-      -- /verditer bench <label> — render ledger (compute/graphics/memory) to CopyBox.
-      -- label is kept case-sensitive (raw input) so "baseline"/"post-vulkan" diff cleanly.
+      -- /verditer bench <label> [force] — render ledger (compute/graphics/memory) to
+      -- CopyBox. label kept case-sensitive (raw input) so "baseline"/"post" diff cleanly.
+      -- `force` overrides the disconnect-safety gate for huge capacities.
       local label = string_match(input, "^%s*%S+%s+(%S+)") or "run"
-      Verditer.Bench.run(label) ; return
+      local force = string_match(string_lower(input), "%sforce%s*$") ~= nil
+      Verditer.Bench.run(label, force) ; return
+    elseif cmd == "allocprobe" then
+      -- /verditer allocprobe [n] — isolate per-view render alloc (corners F4).
+      local n = tonumber(string_match(input, "^%s*%S+%s+(%d+)")) or 1000
+      Verditer.Bench.alloc_probe(n) ; return
     elseif cmd == "stress" then
       -- /verditer stress fill [n]   → fabricate worst-case samples (render path)
       -- /verditer stress events [n] → inject events through the pipeline (hot path)

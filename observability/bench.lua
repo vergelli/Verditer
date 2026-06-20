@@ -28,6 +28,7 @@ local M = Verditer.Bench
 local NOOP = function() end
 M.stress_fill   = NOOP
 M.stress_events = NOOP
+M.alloc_probe   = function() d("[allocprobe] disabled (DEBUG=false)") end
 M.run           = function() d("[bench] disabled (DEBUG=false)") end
 
 if not Verditer.Constants.DEBUG then return end
@@ -51,6 +52,13 @@ local SAMPLE_MS      = 100   -- spacing between fabricated samples (cosmetic; re
 local TYPE_BUCKETS   = 8     -- max damage-type groups per sample
 local SOURCE_BUCKETS = 8     -- max attacker groups per sample (top-7 + Other)
 local REPS           = 20    -- render repetitions per view for stable percentiles
+
+-- Safety: the bench renders synchronously. Above ~3000 samples the stacked render
+-- (samples × 8 groups) blocks the main thread long enough to miss the server
+-- heartbeat → disconnect (303). Measured empirically: 1500 survived (~128ms),
+-- ~5-6k disconnected. Abort above this unless the caller passes `force`. The
+-- low→mid curve already gives the linear scaling law; extrapolate the extreme.
+local SAFETY_MAX_DRAWN = 24000   -- ≈ 3000 samples × 8 groups
 
 -- worst-case group scratch, built ONCE and reused (push copies out of it, so the
 -- same shape on every sample = max stacked-segment count = heaviest render).
@@ -130,8 +138,51 @@ function M.stress_events(n)
                   n, math_floor(n / 7)))
 end
 
+-- ── F4 corner: per-view render alloc isolation (gcprobe-style, N=1000) ─────────
+-- Phase A showed TYPE allocating ~133 B/sample/render while SOURCE (same render_stacked)
+-- did not. This isolates it decisively: warm the pools fully, double-collect, then
+-- render N times measuring the heap delta. ~0 ⇒ the Phase-A number was measurement
+-- noise; nonzero ⇒ a genuine per-render alloc to hunt down. Pool growth is excluded
+-- (the 64-iter warm fills the pool before the baseline), so anything left is real.
+function M.alloc_probe(n)
+  n = n or 1000
+  local TB    = Verditer.TemporalBuffer
+  local Graph = Verditer.Graph
+  if TB.is_recording() then d("[allocprobe] press Stop first."); return end
+  if not Graph.bench_ensure_open() then d("[allocprobe] open the graph first."); return end
+  local cw = Graph.bench_canvas()
+  if (cw or 0) <= 4 then d("[allocprobe] canvas not laid out; make the graph visible, then re-run."); return end
+
+  local cap = TB.capacity()
+  if cap * TYPE_BUCKETS > SAFETY_MAX_DRAWN then
+    d(string_format("[allocprobe] capacity=%d risks a disconnect; lower the sliders (cap <= ~3000).", cap))
+    return
+  end
+
+  local filled = M.stress_fill()
+  local labels, vmin, vmax = Graph.bench_views()
+  local lines = {}
+  local function L(s) lines[#lines + 1] = s; d("[allocprobe] " .. s) end
+
+  L(string_format("=== Verditer allocprobe  N=%d  cap=%d  (double-collect, pools pre-warmed) ===", n, filled))
+  for v = vmin, vmax do
+    Graph.bench_set_view(v)
+    for _ = 1, 64 do Graph.bench_render_once() end        -- warm pools + hit index fully
+    for _ = 1, 2 do collectgarbage("collect") end
+    local before = collectgarbage("count")
+    for _ = 1, n do Graph.bench_render_once() end
+    local after = collectgarbage("count")
+    local bytes = (after - before) * 1024 / n
+    L(string_format("%-9s %10.2f bytes/render   (drawn=%d)", labels[v], bytes, Graph.bench_drawn()))
+  end
+  TB.clear(); Graph.bench_set_view(vmin)
+  L("verdict: ~0 ⇒ Phase-A TYPE alloc was noise; nonzero ⇒ a real per-render alloc (F4).")
+  L("(buffer cleared)")
+  if Verditer.CopyBox then Verditer.CopyBox.show("Verditer allocprobe", table_concat(lines, "\n")) end
+end
+
 -- ── orchestrator: the render ledger ───────────────────────────────────────────
-function M.run(label)
+function M.run(label, force)
   label = label or "run"
   local TB    = Verditer.TemporalBuffer
   local Graph = Verditer.Graph
@@ -151,8 +202,17 @@ function M.run(label)
     return
   end
 
+  -- safety gate: a too-large synchronous render can disconnect you (303).
+  local cap       = TB.capacity()
+  local projected = cap * TYPE_BUCKETS
+  if projected > SAFETY_MAX_DRAWN and not force then
+    d(string_format("[bench] ABORT: capacity=%d would draw ~%d controls (stacked) — risks a client freeze/disconnect (303).",
+                    cap, projected))
+    d(string_format("[bench] use the low->mid curve to extrapolate the extreme, or override: /verditer bench %s force", label))
+    return
+  end
+
   local filled = M.stress_fill()
-  local cap    = TB.capacity()
   local labels, vmin, vmax = Graph.bench_views()
 
   local human, rows = {}, {}

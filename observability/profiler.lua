@@ -18,6 +18,8 @@ if not Verditer.Constants.DEBUG then return end
 --!! You shall not passs!!
 
 local now_ms = Verditer.zenimax.api.GetGameTimeMilliseconds
+local collectgarbage = collectgarbage
+local math_floor     = math.floor
 
 -- histograms
 local BUCKET_BOUNDS = { 0, 1, 2, 4, 8, 16, 32, 64, 128, 256 }
@@ -61,8 +63,9 @@ function M.enter(name)
     frame = {}
     enter_stack[stack_top] = frame
   end
-  frame.name = name
-  frame.t0   = now_ms()
+  frame.name  = name
+  frame.heap0 = collectgarbage("count")   -- heap at enter; on a budget breach the
+  frame.t0    = now_ms()                   -- exit delta tells us if a GC step ran (F6)
 end
 
 function M.exit(name)
@@ -94,8 +97,11 @@ function M.exit(name)
   local budgets = Verditer.Constants.PROFILER_BUDGETS_MS
   local budget  = budgets and budgets[name]
   if budget and dt > budget and Verditer.Log and Verditer.Log.write then
+    -- heap_delta_kb < 0 ⇒ a GC collection ran inside this zone (the spike IS a GC
+    -- pause, F6). ≈0 / positive ⇒ not GC (pool growth or genuine compute).
+    local heap_delta = math_floor(collectgarbage("count") - (frame.heap0 or 0))
     Verditer.Log.write("warn", "profiler.budget_exceeded",
-      { stage = name, dt_ms = dt, budget_ms = budget })
+      { stage = name, dt_ms = dt, budget_ms = budget, heap_delta_kb = heap_delta })
   end
 end
 
