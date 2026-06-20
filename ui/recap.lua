@@ -452,8 +452,11 @@ local function populate(rec)
   end
 
   local p = rec.pressure or {}
+  -- effective mitigation = shielded / (shielded + reached-HP) at the death instant
+  local total = (p.abs or 0) + (p.dtps or 0)
+  local mit   = (total > 0) and math_floor((p.abs or 0) / total * 100 + 0.5) or 0
   controls.pressure:SetText(string_format(GetString(VERDITER_RECAP_PRESSURE),
-                            abbr(p.peak_dtps or 0), p.attackers or 0, abbr(p.abs or 0)))
+                            abbr(p.peak_dtps or 0), p.attackers or 0, abbr(p.abs or 0), mit))
 
   render_lead(rec)
   render_types(rec)

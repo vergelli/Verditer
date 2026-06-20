@@ -136,15 +136,27 @@ end
 local ITP_ICON_IDLE   = "/esoui/art/treeicons/collection_indexicon_armor_up.dds"
 local ITP_ICON_ACTIVE = "/esoui/art/treeicons/collection_indexicon_armor_down.dds"
 
-local function update_header(itp)
+local function update_header(dtps, abs)
+  dtps = dtps or 0
+  abs  = abs  or 0
+  local itp = dtps + abs
   controls.readout:SetText(fmt_readout(itp))
   controls.itp_icon:SetTexture(itp > 0 and ITP_ICON_ACTIVE or ITP_ICON_IDLE)
+  -- effective mitigation = shielded / (shielded + reached-HP). The defensive number
+  -- the tool should show: "my shields ate N% of what was thrown at me."
+  if controls.mit then
+    if itp > 0 then
+      controls.mit:SetText(string_format("Mit %d%%", math_floor(abs / itp * 100 + 0.5)))
+    else
+      controls.mit:SetText("")
+    end
+  end
 end
 
 local function header_tick()
   if controls.window:IsHidden() then return end
   local now = GetGameTimeMilliseconds()
-  update_header(Verditer.Metrics.ITP(now))
+  update_header(Verditer.Metrics.DTPS(now), Verditer.Metrics.ABS(now))
 end
 
 local Pool = Verditer.lib.plot.Pool
@@ -1197,7 +1209,7 @@ local function on_sample_update()
   prev_hp = hp_pct
   Verditer.TemporalBuffer.push(now, dtps, abs, sample_type_scratch, hp_pct, hp_drop, sample_source_scratch)
 
-  update_header(dtps + abs)
+  update_header(dtps, abs)
 
   local elapsed = math_floor((now - recording_start_ms) / 1000)
   controls.status:SetText(string_format("%d:%02d", math_floor(elapsed / 60), elapsed % 60))
@@ -1283,7 +1295,7 @@ function M.on_flush_click()
   hide_legend()
   refresh_button_colors()
   controls.status:SetText("")
-  update_header(0)
+  update_header(0, 0)
   controls.no_data:SetHidden(false)
 end
 
@@ -1385,6 +1397,7 @@ function M.init()
   controls.no_data       = VerditerGraphWindowViewportNoDataLabel
   controls.readout       = VerditerGraphWindowReadoutLabel
   controls.itp_icon      = VerditerGraphWindowItpIcon
+  controls.mit           = VerditerGraphWindowMitLabel
   controls.btn_export    = VerditerGraphWindowExportBtn
   controls.btn_deaths    = VerditerGraphWindowDeathsBtn
 
@@ -1482,7 +1495,8 @@ function M.init()
   controls.view_label:SetColor(0.78, 0.84, 0.95, 1)
 
   controls.readout:SetColor(C_LINE_ABS.r, C_LINE_ABS.g, C_LINE_ABS.b, 0.95)
-  update_header(0)
+  controls.mit:SetColor(C_LINE_ABS.r, C_LINE_ABS.g, C_LINE_ABS.b, 0.72)  -- soft blue: shield = mitigation
+  update_header(0, 0)
   zev.register_update("VerditerHeaderTick", 1000, header_tick)
   refresh_button_colors()
 end

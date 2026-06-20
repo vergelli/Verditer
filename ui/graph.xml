@@ -195,6 +195,18 @@
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Label>
 
+        <!-- Effective-mitigation chip: % of incoming the shield ate (defensive QoL). -->
+        <Label name="$(parent)MitLabel"
+               font="ZoFontGameSmall"
+               horizontalAlignment="LEFT"
+               verticalAlignment="CENTER"
+               mouseEnabled="true">
+          <Anchor point="TOPLEFT" offsetX="300" offsetY="10"/>
+          <Dimensions x="90" y="18"/>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, BOTTOM, GetString(VERDITER_TT_MIT))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
+        </Label>
+
         <!-- View navigation: [<<] [OUTCOME] [>] — controls row, far right. -->
         <Button name="$(parent)PrevViewBtn"
                 mouseEnabled="true"
