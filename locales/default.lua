@@ -38,6 +38,11 @@ ZO_CreateStringId("VERDITER_TT_EXPORT",   "Export the recorded session to CSV")
 ZO_CreateStringId("VERDITER_TT_SETTINGS", "Settings")
 ZO_CreateStringId("VERDITER_TT_ITP",      "Incoming Pressure — damage + shielded, per second")
 
+-- Slider tooltips: the title names them, so these explain what they DO / the trade-off.
+ZO_CreateStringId("VERDITER_TT_SAMPLE",   "How often a bar is recorded (Hz) — higher = finer detail")
+ZO_CreateStringId("VERDITER_TT_TWINDOW",  "How many seconds the chart spans")
+ZO_CreateStringId("VERDITER_TT_VPALPHA",  "Opacity of the tinted background behind the chart")
+
 -- Death Recap window (BACKLOG C)
 ZO_CreateStringId("VERDITER_RECAP_TITLE",       "Death Recap")
 ZO_CreateStringId("VERDITER_RECAP_DIED",        "YOU DIED")

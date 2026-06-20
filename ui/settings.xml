@@ -75,6 +75,8 @@
           <Anchor point="TOPRIGHT" offsetX="-14" offsetY="63"/>
           <Dimensions y="14"/>
           <OnMouseUp>Verditer.Settings.on_sample_track_click(self)</OnMouseUp>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, TOP, GetString(VERDITER_TT_SAMPLE))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Control>
 
         <!-- ── Row 2: Time Window ──────────────────────────────────────── -->
@@ -99,6 +101,8 @@
           <Anchor point="TOPRIGHT" offsetX="-14" offsetY="101"/>
           <Dimensions y="14"/>
           <OnMouseUp>Verditer.Settings.on_twindow_track_click(self)</OnMouseUp>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, TOP, GetString(VERDITER_TT_TWINDOW))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Control>
 
         <!-- ── Row 3: Viewport Alpha ───────────────────────────────────── -->
@@ -123,6 +127,8 @@
           <Anchor point="TOPRIGHT" offsetX="-14" offsetY="139"/>
           <Dimensions y="14"/>
           <OnMouseUp>Verditer.Settings.on_vpalpha_track_click(self)</OnMouseUp>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, TOP, GetString(VERDITER_TT_VPALPHA))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Control>
 
         <!-- ── Logo visibility toggle ──────────────────────────────────── -->
