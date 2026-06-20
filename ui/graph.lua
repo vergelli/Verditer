@@ -93,6 +93,11 @@ local hit = { cols = {}, n = 0, slot_w = 0, offset = 0 }
 local C_DIM_BIAS = 0.05   -- dim = darken+desaturate toward this, at low alpha
 local render_current_view   -- forward decl (hover helpers call it before it's defined)
 
+-- Fade controllers for the card + crosshair (increment 3 polish): smooth appear/
+-- disappear at the edges of a hover, no fade while scrubbing column to column.
+local FADE_MS = 120
+local card_fader, crosshair_fader
+
 -- Hover card (increment 2): a small branded panel that follows the cursor —
 -- group swatch + name (in its colour) + "value DTPS · %". Replaces the plain tooltip.
 local CARD_W, CARD_H = 196, 56
@@ -522,6 +527,29 @@ local function update_legend(groups)
   end
 end
 
+-- A tiny fade controller wrapping ZO_AlphaAnimation. `visible` tracks the logical
+-- state so a fade only fires on the show/hide EDGE (calling fade_in while already
+-- shown is a no-op — exactly what scrubbing needs). The control starts at alpha 0 +
+-- hidden (set at creation) so the first fade-in is actually visible.
+local function make_fader(control)
+  return { anim = ZO_AlphaAnimation:New(control), control = control, visible = false }
+end
+
+local function fade_in(f)
+  if not f or f.visible then return end
+  f.visible = true
+  f.anim:FadeIn(0, FADE_MS)
+end
+
+local function fade_out(f)
+  if not f or not f.visible then return end
+  f.visible = false
+  local control = f.control                       -- capture by closure (don't trust the
+  f.anim:FadeOut(0, FADE_MS, nil, function()      -- OnStop callback arg's identity)
+    control:SetHidden(true)
+  end)
+end
+
 -- Hover is allowed on any frozen view with data, while shown. Stacked views add the
 -- group highlight/dim; non-stacked views (OUTCOME/SURVIVAL) get crosshair + a moment
 -- card only (nothing to highlight).
@@ -546,8 +574,8 @@ end
 local function stop_hover_poll() zev.unregister_update("VerditerHoverPoll") end
 
 local function hide_hover_ui()
-  if controls.card and controls.card.root then controls.card.root:SetHidden(true) end
-  if controls.crosshair then controls.crosshair:SetHidden(true) end
+  fade_out(card_fader)
+  fade_out(crosshair_fader)
 end
 
 -- Build the cursor-following hover card once (parented to the window so it draws
@@ -559,6 +587,7 @@ local function build_hover_card()
   root:SetDimensions(CARD_W, CARD_H)
   root:SetMouseEnabled(false)
   root:SetDrawLevel(20)
+  root:SetAlpha(0)        -- starts transparent so the first fade-in is visible
   root:SetHidden(true)
 
   local bg = WM:CreateControl("VerditerHoverCardBg", root, CT_TEXTURE)
@@ -615,6 +644,7 @@ local function hexc(c)
 end
 
 -- Pin the card near the cursor, clamped on-screen (flips left/up near the edges).
+-- Visibility is handled by the fader (fade_in), not here.
 local function position_card(mx, my)
   local card = controls.card
   local sw, sh = GuiRoot:GetDimensions()
@@ -626,7 +656,7 @@ local function position_card(mx, my)
   if y < 4 then y = 4 end
   card.root:ClearAnchors()
   card.root:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, x, y)
-  card.root:SetHidden(false)
+  fade_in(card_fader)
 end
 
 -- Group-mode card (stacked views): swatch + group name in its colour + value/%.
@@ -706,7 +736,7 @@ local function hover_poll()
     controls.crosshair:ClearAnchors()
     controls.crosshair:SetAnchor(TOPLEFT,    canvas, TOPLEFT,    cx, 0)
     controls.crosshair:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, cx, 0)
-    controls.crosshair:SetHidden(false)
+    fade_in(crosshair_fader)
   end
 
   local elapsed = (col.t and hit.t0) and (col.t - hit.t0) or 0
@@ -723,8 +753,8 @@ local function hover_poll()
     show_moment_card(C_HP, "Survival",
       string_format("|c%sHP  %d%%|r", hexc(C_HP), math_floor(hp * 100 + 0.5)),
       elapsed, mx, my)
-  elseif controls.card and controls.card.root then
-    controls.card.root:SetHidden(true)                    -- stacked but above the stack
+  else
+    fade_out(card_fader)                                  -- stacked but above the stack
   end
 end
 
@@ -1314,9 +1344,14 @@ function M.init()
   controls.crosshair:SetWidth(1)
   controls.crosshair:SetColor(C_CROSSHAIR.r, C_CROSSHAIR.g, C_CROSSHAIR.b, C_CROSSHAIR.a)
   controls.crosshair:SetDrawLevel(4)
+  controls.crosshair:SetAlpha(0)        -- fade target; effective colour-alpha stays 0.5
   controls.crosshair:SetHidden(true)
 
   build_hover_card()
+
+  -- fade controllers (created after their controls exist)
+  card_fader      = make_fader(controls.card.root)
+  crosshair_fader = make_fader(controls.crosshair)
 
   controls.pool_type_seg  = make_fill_pool("VerditerTypeSeg")
   controls.pool_type_line = make_line_pool("VerditerTypeLine")
