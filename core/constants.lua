@@ -63,6 +63,12 @@ Verditer.Constants = {
     TINT      = { r = 0.043, g = 0.063, b = 0.125, a = 1.0 },  -- #0B1020 window bg
     ACCENT    = { r = 0.435, g = 0.659, b = 1.0,   a = 1.0 },  -- #6FA8FF lines
     DANGER    = { r = 0.90,  g = 0.30,  b = 0.25,  a = 1.0 },  -- #E64D40 HP stripe
+    -- Shared window chrome (Federico, 2026-06-20: the old border was too thin/dull).
+    -- ONE place for every window's border + chrome wash → tweak here, all windows
+    -- update in lockstep. EDGE = vivid electric-blue outer border (was a flat
+    -- 0.30/0.50/0.95); CHROME = the inner donut wash, punchier + a touch more opaque.
+    EDGE      = { r = 0.22,  g = 0.54,  b = 1.0,   a = 1.0  },  -- vivid border
+    CHROME    = { r = 0.32,  g = 0.56,  b = 1.0,   a = 0.88 },  -- inner chrome wash
   },
 
   PROFILER_BUDGETS_MS = {

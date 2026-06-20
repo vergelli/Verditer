@@ -33,7 +33,7 @@ local string_format = string.format
 local TINT     = Verditer.Constants.BRAND.TINT
 local C_TITLE  = { r = 0.82, g = 0.88, b = 1.00, a = 1.00 }
 local C_HINT   = { r = 0.66, g = 0.72, b = 0.82, a = 1.00 }
-local C_EDGE   = { r = 0.30, g = 0.50, b = 0.95, a = 1.00 }
+local C_EDGE   = Verditer.Constants.BRAND.EDGE   -- shared vivid border
 local MAX_CHARS = 500000
 
 -- damage-type short names for the CSV (defensive build: skip nil enum keys)

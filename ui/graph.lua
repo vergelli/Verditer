@@ -35,7 +35,8 @@ local C_LINE_DTPS = { r = 1.00, g = 0.46, b = 0.40, a = 1.00 }  -- bright red fr
 local C_LINE_ABS  = { r = 0.44, g = 0.66, b = 1.00, a = 1.00 }  -- bright blue frontier
 local C_LINE_TOP  = { r = 0.80, g = 0.88, b = 1.00, a = 1.00 }  -- pale-blue DTPS frontier (type view)
 local C_BASELINE  = { r = 0.78, g = 0.86, b = 1.00, a = 0.55 }  -- shared axis (Outcome)
-local C_CHROME    = { r = 0.46, g = 0.60, b = 0.95, a = 0.80 }  -- blue chrome wash
+local C_CHROME    = Verditer.Constants.BRAND.CHROME            -- shared blue chrome wash
+local C_EDGE      = Verditer.Constants.BRAND.EDGE              -- shared vivid border
 local C_VIEWPORT  = { r = 0.30, g = 0.45, b = 0.85 }            -- viewport tint (blue)
 
 -- Survival views
@@ -1310,7 +1311,7 @@ function M.init()
   VerditerGraphWindowChromeBottom:SetColor(C_CHROME.r, C_CHROME.g, C_CHROME.b, C_CHROME.a)
   VerditerGraphWindowChromeLeft  :SetColor(C_CHROME.r, C_CHROME.g, C_CHROME.b, C_CHROME.a)
   VerditerGraphWindowChromeRight :SetColor(C_CHROME.r, C_CHROME.g, C_CHROME.b, C_CHROME.a)
-  VerditerGraphWindowBg:SetEdgeColor(0.30, 0.50, 0.95, 1.0)
+  VerditerGraphWindowBg:SetEdgeColor(C_EDGE.r, C_EDGE.g, C_EDGE.b, 1.0)
   local sv_a = (sv.graph and sv.graph.viewport_alpha_pct) or 30
   VerditerGraphWindowViewportBg:SetCenterColor(C_VIEWPORT.r, C_VIEWPORT.g, C_VIEWPORT.b, sv_a / 100)
 

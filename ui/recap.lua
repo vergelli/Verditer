@@ -41,7 +41,7 @@ local C_KB     = { r = 0.96, g = 0.36, b = 0.30, a = 1.00 }
 local C_NAME   = { r = 0.90, g = 0.92, b = 0.96, a = 1.00 }
 local C_HP     = { r = 0.30, g = 0.80, b = 0.45, a = 0.95 }
 local C_SHIELD = { r = 0.44, g = 0.66, b = 1.00, a = 0.95 }
-local C_CHROME = { r = 0.46, g = 0.60, b = 0.95, a = 0.80 }
+local C_CHROME = Verditer.Constants.BRAND.CHROME   -- shared blue chrome wash
 local C_GRID   = { r = 0.55, g = 0.58, b = 0.70, a = 0.25 }
 
 -- layout (within Content)
@@ -489,8 +489,9 @@ function M.init()
   controls.index:SetColor(C_SUB.r, C_SUB.g, C_SUB.b, C_SUB.a)
   controls.export:SetText(GetString(VERDITER_RECAP_EXPORT))
 
+  local EDGE = Verditer.Constants.BRAND.EDGE
   VerditerRecapBg:SetCenterColor(TINT.r, TINT.g, TINT.b, 0.92)
-  VerditerRecapBg:SetEdgeColor(C_CHROME.r, C_CHROME.g, C_CHROME.b, 1.0)
+  VerditerRecapBg:SetEdgeColor(EDGE.r, EDGE.g, EDGE.b, 1.0)
 
   -- belt-and-suspenders: ensure move/resize are on regardless of XML quirks
   controls.window:SetMovable(true)

@@ -266,8 +266,9 @@ function M.init()
   controls.window         = VerditerSettingsPanel
   controls.window_title   = VerditerSettingsPanelWindowTitle
 
+  local EDGE = Verditer.Constants.BRAND.EDGE
   VerditerSettingsPanelBg:SetCenterColor(0.043, 0.063, 0.125, 1.0)  -- VERDITER tint
-  VerditerSettingsPanelBg:SetEdgeColor(0.30, 0.50, 0.95, 1.0)
+  VerditerSettingsPanelBg:SetEdgeColor(EDGE.r, EDGE.g, EDGE.b, 1.0)
   controls.title_sample   = VerditerSettingsPanelSampleTitle
   controls.label_sample   = VerditerSettingsPanelSampleLabel
   controls.track_sample   = VerditerSettingsPanelSliderTrackSample
