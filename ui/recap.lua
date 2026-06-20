@@ -40,7 +40,8 @@ local C_DMG    = { r = 0.95, g = 0.85, b = 0.55, a = 1.00 }
 local C_KB     = { r = 0.96, g = 0.36, b = 0.30, a = 1.00 }
 local C_NAME   = { r = 0.90, g = 0.92, b = 0.96, a = 1.00 }
 local C_HP     = { r = 0.30, g = 0.80, b = 0.45, a = 0.95 }
-local C_SHIELD = { r = 0.44, g = 0.66, b = 1.00, a = 0.95 }
+local C_SHIELD = { r = 0.44, g = 0.66, b = 1.00, a = 0.95 }  -- celeste: shield-break line
+local C_PEAK   = { r = 0.97, g = 0.74, b = 0.30, a = 0.90 }  -- amber: peak-DTPS line
 local C_CHROME = Verditer.Constants.BRAND.CHROME   -- shared blue chrome wash
 local C_GRID   = { r = 0.55, g = 0.58, b = 0.70, a = 0.25 }
 
@@ -201,6 +202,18 @@ local function build_content()
     ZO_Tooltips_ShowTextTooltip(self, TOP, GetString(VERDITER_TT_SHIELD_BREAK))
   end)
   controls.shield_hit:SetHandler("OnMouseExit", function() ZO_Tooltips_HideTextTooltip() end)
+  -- peak-DTPS line (amber): the frame of the worst incoming DTPS in the window, with
+  -- its own wider invisible hover strip carrying the explainer tooltip.
+  controls.peak_line = mk_tex("VerditerRecapPeakLine")
+  controls.peak_line:SetColor(C_PEAK.r, C_PEAK.g, C_PEAK.b, C_PEAK.a)
+  controls.peak_hit = mk_tex("VerditerRecapPeakHit")
+  controls.peak_hit:SetColor(0, 0, 0, 0)
+  controls.peak_hit:SetMouseEnabled(true)
+  controls.peak_hit:SetDrawLevel(10)
+  controls.peak_hit:SetHandler("OnMouseEnter", function(self)
+    ZO_Tooltips_ShowTextTooltip(self, TOP, GetString(VERDITER_TT_PEAK))
+  end)
+  controls.peak_hit:SetHandler("OnMouseExit", function() ZO_Tooltips_HideTextTooltip() end)
 
   controls.lead_bars = {}
   controls.lead_reds = {}
@@ -274,6 +287,8 @@ local function render_lead(rec)
   end
   controls.shield_line:SetHidden(true)
   controls.shield_hit:SetHidden(true)
+  controls.peak_line:SetHidden(true)
+  controls.peak_hit:SetHidden(true)
   if n == 0 or cw <= FILM_X0 + 4 then hide_film_labels(); return end
 
   local film_w = cw - FILM_X0
@@ -324,6 +339,20 @@ local function render_lead(rec)
     controls.shield_hit:SetAnchor(TOPLEFT, content, TOPLEFT, x - 4, FILM_Y)
     controls.shield_hit:SetDimensions(9, FILM_H)
     controls.shield_hit:SetHidden(false)
+  end
+
+  -- peak-DTPS marker (amber): the frame of the worst incoming DTPS in the window.
+  local pk = rec.lead.peak_idx
+  if pk and pk >= 1 and pk <= n then
+    local px = FILM_X0 + math_floor((pk - 0.5) * slot + 0.5)
+    controls.peak_line:ClearAnchors()
+    controls.peak_line:SetAnchor(TOPLEFT, content, TOPLEFT, px, FILM_Y)
+    controls.peak_line:SetDimensions(1, FILM_H)
+    controls.peak_line:SetHidden(false)
+    controls.peak_hit:ClearAnchors()
+    controls.peak_hit:SetAnchor(TOPLEFT, content, TOPLEFT, px - 4, FILM_Y)
+    controls.peak_hit:SetDimensions(9, FILM_H)
+    controls.peak_hit:SetHidden(false)
   end
 
   controls.lead_hp100:ClearAnchors()

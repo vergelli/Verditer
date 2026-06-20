@@ -47,6 +47,7 @@ ZO_CreateStringId("VERDITER_TT_VPALPHA",  "Opacity of the tinted background behi
 
 -- Death Recap: the celeste vertical line in the lead-up film.
 ZO_CreateStringId("VERDITER_TT_SHIELD_BREAK", "Shield broke here — damage hit your HP directly after this")
+ZO_CreateStringId("VERDITER_TT_PEAK",         "Peak incoming damage — highest DTPS in this window")
 
 -- Death Recap window (BACKLOG C)
 ZO_CreateStringId("VERDITER_RECAP_TITLE",       "Death Recap")

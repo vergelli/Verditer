@@ -131,7 +131,7 @@ local function freeze_lead(rec)
   local n      = lead_n
   local cap    = lead_cap
   local oldest = (n >= cap) and lead_w or 1
-  local peak, last_shield = 0, 0
+  local peak, last_shield, peak_idx = 0, 0, 0
   local prev_hp = -1
   for i = 1, n do
     local idx = ((oldest - 1 + i - 1) % cap) + 1
@@ -144,7 +144,7 @@ local function freeze_lead(rec)
     local hp = s.hp or 0
     d.hp_drop = (prev_hp >= 0 and hp >= 0) and math_max(0, prev_hp - hp) or 0
     prev_hp = hp
-    if (s.dtps or 0) > peak then peak = s.dtps end
+    if (s.dtps or 0) > peak then peak = s.dtps; peak_idx = i end   -- argmax frame for the marker
     if (s.abs or 0) > 0 then last_shield = i end
   end
 
@@ -167,6 +167,8 @@ local function freeze_lead(rec)
 
   lead.count        = n
   lead.shield_break = (last_shield > 0 and last_shield < n) and last_shield or nil
+  -- peak DTPS is the max OVER the film frames → always in-window by construction.
+  lead.peak_idx     = (peak_idx > 0) and peak_idx or nil
   if peak > 0 and rec.pressure then rec.pressure.peak_dtps = peak end
 end
 
@@ -322,21 +324,25 @@ function M.simulate()
   -- synthetic lead-up film: HP accelerating to 0, shield gone at ~70% through
   local N = 40
   local prev = -1
+  local peak, peak_idx = 0, 0
   for i = 1, N do
     local f  = i / N
     local hp = math_max(0, 1.0 - f * f * 1.05)
     if i == N then hp = 0 end
+    local dt = 4000 + 14000 * math_min(f / 0.85, 1.0)   -- burst peaks ~85% then plateaus
     rec.lead[i] = {
       t       = now - (N - i) * 250,
       hp      = hp,
-      dtps    = 4000 + 14000 * f,
+      dtps    = dt,
       abs     = (f < 0.7) and (2000 * (1 - f)) or 0,
       hp_drop = (prev >= 0) and math_max(0, prev - hp) or 0,
     }
+    if dt > peak then peak = dt; peak_idx = i end
     prev = hp
   end
   rec.lead.count        = N
   rec.lead.shield_break = math_floor(N * 0.7)
+  rec.lead.peak_idx     = peak_idx
 
   commit(rec)
 end
