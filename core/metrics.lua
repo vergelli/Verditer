@@ -5,7 +5,7 @@ Verditer.Metrics = {}
 
 local M = Verditer.Metrics
 local W_MS        = 5000
-local W_SHIELD_MS = 30000
+local W_SHIELD_MS = 5000   -- matches DTPS: OUTCOME reads red+blue at one instant
 
 local dmg_in_buf  -- reached HP   (DTPS)
 local abs_in_buf  -- ate by shield (ABS)
@@ -41,7 +41,7 @@ local function release_to_pool(entry) event_pool:release(entry) end
 function M.init()
   local MC = Verditer.Constants.METRICS or {}
   W_MS        = MC.DAMAGE_WINDOW_MS or 5000
-  W_SHIELD_MS = MC.SHIELD_WINDOW_MS or 30000
+  W_SHIELD_MS = MC.SHIELD_WINDOW_MS or 5000
 
   local cap  = (Verditer.Constants.POOL and Verditer.Constants.POOL.EVENT_CAPACITY) or 4096
   event_pool = Verditer.lib.mem.BufferPool.new(Verditer.lib.mem.Event.factory, cap, "event_pool")
@@ -100,7 +100,7 @@ function M.set_window(ms)
 end
 
 function M.set_shield_window(ms)
-  W_SHIELD_MS = ms or 30000
+  W_SHIELD_MS = ms or 5000
   abs_in_buf.window_ms = W_SHIELD_MS
   log:info("abs window ->", W_SHIELD_MS, "ms")
 end

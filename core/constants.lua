@@ -26,7 +26,12 @@ Verditer.Constants = {
 
   METRICS = {
     DAMAGE_WINDOW_MS = 5000,    -- DTPS rolling window
-    SHIELD_WINDOW_MS = 30000,   -- ABS window, wider for shield-event sparsity
+    -- ABS MUST share the DTPS window. The OUTCOME view reads red (DTPS) and blue
+    -- (ABS) together at one instant; a wider ABS window made absorptions linger
+    -- (blue stayed "eating shield" up to 30 s after the shield broke, while red
+    -- already showed HP being eaten — Federico flagged this in-game). Matched
+    -- windows decay both sides together, so the timeline reads honestly.
+    SHIELD_WINDOW_MS = 5000,
   },
 
   POOL = {
