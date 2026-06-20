@@ -82,6 +82,18 @@ local current_view        = VIEW_OUTCOME
 
 local prev_hp = -1   -- previous sample's hp_pct, for the fresh-loss (red) band
 
+-- ── Hover (Datadog-style, BACKLOG D) ──────────────────────────────────────────
+-- STATIC SESSION ONLY: enabled when stopped on a stacked view (TYPE/SOURCE). The
+-- hovered group brightens across every bar while the rest dim, and a small tooltip
+-- follows the cursor. To avoid duplicating the render geometry, render_stacked
+-- builds a hit index as it draws (per-column x-range + each group's y-band); the
+-- poll then maps the cursor to a band by pure lookup. nil hover_key = no highlight.
+local hover_key  = nil
+local hover_text = nil
+local hit = { cols = {}, n = 0, slot_w = 0, offset = 0 }
+local C_DIM_BIAS = 0.05   -- dim = darken+desaturate toward this, at low alpha
+local render_current_view   -- forward decl (hover helpers call it before it's defined)
+
 -- small helpers
 local function fmt_val(v)
   return ZO_AbbreviateAndLocalizeNumber(math_floor(v), 0, false)
@@ -501,11 +513,118 @@ local function update_legend(groups)
   end
 end
 
+-- hex for ESO |c colour markup (the hover tooltip names the group in its colour)
+local function hexcol(r, g, b)
+  return string_format("%02x%02x%02x",
+    math_floor((r or 1) * 255 + 0.5), math_floor((g or 1) * 255 + 0.5), math_floor((b or 1) * 255 + 0.5))
+end
+
+-- Hover is allowed only on a frozen stacked session with data, while shown.
+local function hover_allowed()
+  return not Verditer.TemporalBuffer.is_recording()
+     and (current_view == VIEW_BY_DAMAGE_TYPE or current_view == VIEW_BY_SOURCE)
+     and Verditer.TemporalBuffer.count() > 0
+     and not controls.window:IsHidden()
+end
+
+-- Display label for a hovered band, by the active view's key space.
+local function hover_label(band)
+  if current_view == VIEW_BY_SOURCE then
+    if band.key == -1 then return "Other" end
+    if band.key == 0  then return "Environment" end
+    local nm = clean_name(band.name)
+    return nm ~= "" and nm or "Unknown"
+  end
+  local DTC = Verditer.DamageTypeColors
+  return (DTC and DTC.name) and DTC.name(band.key) or "Damage"
+end
+
+local function stop_hover_poll() zev.unregister_update("VerditerHoverPoll") end
+
+local function hide_hover_ui()
+  ZO_Tooltips_HideTextTooltip()
+  hover_text = nil
+  if controls.hover_anchor then controls.hover_anchor:SetHidden(true) end
+end
+
+-- Map a cursor position (canvas-relative x, height above canvas bottom) to the
+-- group band under it, using the hit index built during the last render.
+local function hover_pick(rel_x, height_above)
+  if hit.n == 0 or hit.slot_w <= 0 then return nil end
+  local i = math_floor(rel_x / hit.slot_w) - hit.offset + 1
+  if i < 1 or i > hit.n then return nil end
+  local col = hit.cols[i]
+  if not col or rel_x < col.x0 or rel_x > col.x1 then return nil end
+  for b = 1, col.nb do
+    local band = col.bands[b]
+    if height_above >= band.lo and height_above <= band.hi then return band end
+  end
+  return nil
+end
+
+-- Poll while the cursor is over the canvas: re-highlight on group change, and keep
+-- the tooltip pinned to the cursor. Cheap (runs only when stopped + hovering).
+local function hover_poll()
+  if not hover_allowed() then
+    if hover_key ~= nil then hover_key = nil; render_current_view() end
+    hide_hover_ui()
+    return
+  end
+  local canvas = controls.canvas
+  local mx, my = GetUIMousePosition()
+  local rel_x  = mx - canvas:GetLeft()
+  local above  = canvas:GetBottom() - my
+  local cw, ch = canvas:GetWidth(), canvas:GetHeight()
+
+  local band = nil
+  if rel_x >= 0 and rel_x <= cw and above >= 0 and above <= ch then
+    band = hover_pick(rel_x, above)
+  end
+
+  local new = band and band.key or nil
+  if new ~= hover_key then hover_key = new; render_current_view() end
+
+  if band then
+    local a = controls.hover_anchor
+    a:ClearAnchors()
+    a:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, mx + 14, my + 16)
+    a:SetHidden(false)
+    local text = string_format("|c%s%s|r  —  %d%%",
+      hexcol(band.r, band.g, band.b), hover_label(band),
+      math_floor((band.share or 0) * 100 + 0.5))
+    if text ~= hover_text then
+      hover_text = text
+      ZO_Tooltips_ShowTextTooltip(a, TOPLEFT, text)
+    end
+  else
+    hide_hover_ui()
+  end
+end
+
+-- Toggle the hit layer with the gate; clear any stale highlight/tooltip when off.
+local function update_hover_gate()
+  local on = hover_allowed()
+  if controls.hit then
+    controls.hit:SetMouseEnabled(on)
+    controls.hit:SetHidden(not on)
+  end
+  if not on then
+    stop_hover_poll()
+    hide_hover_ui()
+    if hover_key ~= nil then
+      hover_key = nil
+      if not controls.window:IsHidden() then render_current_view() end
+    end
+  end
+end
+
 -- Shared stacked-bar renderer: per-tick column of height ∝ DTPS, segmented by a
 -- group set. View 2 (BY_DAMAGE_TYPE) keys it on `type_groups`, View 4 (BY_SOURCE)
 -- on `source_groups` — identical geometry, different grouping. Each group slot
 -- carries its own colour, so the renderer never knows what it's stacking.
-local function render_stacked(groups_field)
+-- `key_field` ("dt"/"uid") identifies a group for hover highlighting; when the
+-- session is frozen it also records the hit index (per-column bands) for the hover.
+local function render_stacked(groups_field, key_field)
   release_all_pools()
 
   local n = Verditer.TemporalBuffer.count()
@@ -528,11 +647,26 @@ local function render_stacked(groups_field)
   local slot_w, bar_gap, offset = slot_geometry(cw)
   local xs, top_hs = rt_xs, rt_top_hs
 
+  -- hit index is only needed (and only valid) on a frozen session; skip the extra
+  -- bookkeeping entirely while recording so the hot path stays untouched.
+  local capture = not Verditer.TemporalBuffer.is_recording()
+  local hk = hover_key   -- nil = no highlight; else dim every group but this key
+  if capture then
+    hit.n = n; hit.slot_w = slot_w; hit.offset = offset
+  end
+
   Verditer.TemporalBuffer.iterate(function(i, s)
     local x, bw = slot_rect(offset, i, slot_w, bar_gap)
     local col_h = math_max(0, math_floor(ch_plot * (s.DTPS / max_dtps) + 0.5))
     xs[i]     = x + bw * 0.5
     top_hs[i] = col_h
+
+    local col
+    if capture then
+      col = hit.cols[i]
+      if not col then col = { bands = {} }; hit.cols[i] = col end
+      col.x0 = x; col.x1 = x + bw; col.nb = 0
+    end
 
     local y_off  = 0
     local groups = s[groups_field]
@@ -544,8 +678,27 @@ local function render_stacked(groups_field)
       t:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, x, -(y_off + TIME_STRIP_H))
       t:SetWidth(bw)
       t:SetHeight(seg_h)
-      t:SetColor(grp.r, grp.g, grp.b, grp.a)
+      if hk ~= nil and grp[key_field] ~= hk then
+        t:SetColor(grp.r * 0.30 + C_DIM_BIAS, grp.g * 0.30 + C_DIM_BIAS,
+                   grp.b * 0.30 + C_DIM_BIAS, 0.28)               -- backgrounded
+      else
+        t:SetColor(grp.r, grp.g, grp.b, grp.a)                   -- full / highlighted
+      end
       t:SetHidden(false)
+
+      if capture then
+        local nb   = col.nb + 1
+        local band = col.bands[nb]
+        if not band then band = {}; col.bands[nb] = band end
+        band.key   = grp[key_field]
+        band.lo    = TIME_STRIP_H + y_off
+        band.hi    = TIME_STRIP_H + y_off + seg_h
+        band.share = grp.share
+        band.name  = grp.name      -- nil for TYPE; raw attacker name for SOURCE
+        band.r = grp.r; band.g = grp.g; band.b = grp.b
+        col.nb = nb
+      end
+
       y_off = y_off + seg_h
     end
   end)
@@ -564,13 +717,13 @@ local function render_stacked(groups_field)
 end
 
 -- View 2 — BY_DAMAGE_TYPE: stacked by damageType (fire/shock/…).
-local function render_by_damage_type() render_stacked("type_groups") end
+local function render_by_damage_type() render_stacked("type_groups", "dt") end
 
 -- View 4 — BY_SOURCE: stacked by attacker ("who's killing me"). Same column
 -- height (DTPS), segments coloured by the stable per-uid hash; top-7 + Other.
 -- Adds the legend (swatch + name + %) keyed off the latest sample so "who" reads.
 local function render_by_source()
-  render_stacked("source_groups")
+  render_stacked("source_groups", "uid")
   if Verditer.TemporalBuffer.count() > 0 then
     local s = Verditer.TemporalBuffer.latest()
     update_legend(s and s.source_groups)
@@ -738,7 +891,7 @@ local function render_survival_bars()
   end)
 end
 
-local function render_current_view()
+function render_current_view()
   if current_view ~= VIEW_BY_SOURCE then hide_legend() end
   if current_view == VIEW_OUTCOME then
     render_outcome()
@@ -760,6 +913,7 @@ local function refresh_button_colors()
     controls.btn_export:SetHidden(recording or Verditer.TemporalBuffer.count() == 0)
   end
   M.notify_deaths_changed()
+  update_hover_gate()
 end
 
 local function persist_view()
@@ -771,12 +925,15 @@ local function set_view(v)
   current_view = v
   controls.view_label:SetText(VIEW_LABELS[v])
   persist_view()
+  hover_key = nil   -- changing view drops any highlight from the old one
   if Verditer.TemporalBuffer.count() == 0 then
     controls.no_data:SetHidden(false)
+    update_hover_gate()
     return
   end
   controls.no_data:SetHidden(true)
   render_current_view()
+  update_hover_gate()
 end
 
 local prof_enter = Verditer.Profiler.enter
@@ -862,6 +1019,8 @@ function M.on_close_click()
   Verditer.Visibility.set("graph", false)
   release_all_pools()
   hide_legend()
+  stop_hover_poll(); hide_hover_ui(); hover_key = nil
+  if controls.hit then controls.hit:SetMouseEnabled(false); controls.hit:SetHidden(true) end
 end
 
 function M.on_export_click()
@@ -928,9 +1087,12 @@ function M.toggle()
   Verditer.Visibility.set("graph", now_visible)
   if now_visible then
     render_current_view()
+    update_hover_gate()
   else
     release_all_pools()
     hide_legend()
+    stop_hover_poll(); hide_hover_ui(); hover_key = nil
+    if controls.hit then controls.hit:SetMouseEnabled(false); controls.hit:SetHidden(true) end
   end
 end
 
@@ -978,6 +1140,31 @@ function M.init()
 
   controls.grid   = create_grid("VerditerGrid", controls.canvas)
   controls.legend = create_legend("VerditerLegend", controls.canvas)
+
+  -- Hover (BACKLOG D): a transparent mouse-enabled layer over the canvas, on only
+  -- when stopped on a stacked view. OnMouseEnter starts a light poll that tracks the
+  -- cursor; OnMouseExit clears the highlight. A 1px anchor pins the tooltip to the
+  -- cursor. Both start disabled (no data / recording at load).
+  controls.hit = WINDOW_MANAGER:CreateControl("VerditerGraphHit", controls.canvas, zc.CT_CONTROL)
+  controls.hit:ClearAnchors()
+  controls.hit:SetAnchor(TOPLEFT,     controls.canvas, TOPLEFT,     0, 0)
+  controls.hit:SetAnchor(BOTTOMRIGHT, controls.canvas, BOTTOMRIGHT, 0, 0)
+  controls.hit:SetDrawLevel(3)
+  controls.hit:SetMouseEnabled(false)
+  controls.hit:SetHidden(true)
+  controls.hit:SetHandler("OnMouseEnter", function()
+    if hover_allowed() then zev.register_update("VerditerHoverPoll", 50, hover_poll) end
+  end)
+  controls.hit:SetHandler("OnMouseExit", function()
+    stop_hover_poll()
+    hide_hover_ui()
+    if hover_key ~= nil then hover_key = nil; render_current_view() end
+  end)
+
+  controls.hover_anchor = WINDOW_MANAGER:CreateControl("VerditerGraphHoverAnchor", GuiRoot, zc.CT_CONTROL)
+  controls.hover_anchor:SetDimensions(1, 1)
+  controls.hover_anchor:SetMouseEnabled(false)
+  controls.hover_anchor:SetHidden(true)
 
   controls.pool_type_seg  = make_fill_pool("VerditerTypeSeg")
   controls.pool_type_line = make_line_pool("VerditerTypeLine")
