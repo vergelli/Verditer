@@ -88,6 +88,8 @@
                     pressed="EsoUI/Art/MenuBar/menuBar_mainMenu_down.dds"
                     mouseOver="EsoUI/Art/MenuBar/menuBar_mainMenu_over.dds"/>
           <OnClicked>Verditer.Settings.toggle()</OnClicked>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, BOTTOM, GetString(VERDITER_TT_SETTINGS))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Button>
 
         <Button name="$(parent)CloseBtn"
@@ -114,6 +116,8 @@
                     pressed="EsoUI/Art/Buttons/large_downarrow_down.dds"
                     mouseOver="EsoUI/Art/Buttons/large_downarrow_over.dds"/>
           <OnClicked>Verditer.Graph.on_export_click()</OnClicked>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, BOTTOM, GetString(VERDITER_TT_EXPORT))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Button>
 
         <!-- Deaths browser: opens the recap and pages through the session's
@@ -129,6 +133,8 @@
                     pressed="EsoUI/Art/Trials/VitalityDepletion.dds"
                     mouseOver="EsoUI/Art/Trials/VitalityDepletion.dds"/>
           <OnClicked>Verditer.Graph.on_deaths_click()</OnClicked>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, BOTTOM, GetString(VERDITER_TT_DEATHS))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Button>
 
         <!-- Controls row: Record / Stop / Flush. -->

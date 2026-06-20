@@ -6,7 +6,8 @@ local api = Verditer.zenimax.api
 local zc  = Verditer.zenimax.constants
 local WM  = Verditer.zenimax.ui.WINDOW_MANAGER
 
-local GetString     = api.GetString
+local GetString               = api.GetString
+local GetGameTimeMilliseconds = api.GetGameTimeMilliseconds
 local math_floor    = math.floor
 local math_max      = math.max
 local math_min      = math.min
@@ -63,6 +64,16 @@ local controls = {}
 -- helpers ───────────────────────────────────────────────────────────────────
 local function abbr(v)
   return ZO_AbbreviateAndLocalizeNumber(math_floor(v + 0.5), 1, false)
+end
+
+-- "Xs ago" / "Xm Ys ago" for a death's timestamp (snapshot at view/page time —
+-- locates the page in the deaths browser). Empty if the record carries no ts.
+local function ago_text(ts)
+  if not ts or ts <= 0 then return "" end
+  local s = math_floor((GetGameTimeMilliseconds() - ts) / 1000)
+  if s < 0 then s = 0 end
+  if s < 60 then return string_format(GetString(VERDITER_RECAP_AGO_SEC), s) end
+  return string_format(GetString(VERDITER_RECAP_AGO_MIN), math_floor(s / 60), s % 60)
 end
 
 local function commafy(n)
@@ -366,7 +377,13 @@ local function populate(rec)
     controls.overkill:SetHidden(true)
   end
 
-  controls.zone:SetText(rec.zone or "")
+  local zone = rec.zone or ""
+  local ago  = ago_text(rec.ts)
+  if zone ~= "" and ago ~= "" then
+    controls.zone:SetText(zone .. "  ·  " .. ago)
+  else
+    controls.zone:SetText(ago ~= "" and ago or zone)
+  end
 
   for i = 1, MAX_ROWS do
     local row = controls.rows[i]

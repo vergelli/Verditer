@@ -66,6 +66,18 @@ local function current_zone()
   return ""
 end
 
+-- Count real attackers in a source-group scratch: exclude the environment/self
+-- bucket (uid 0 = fall/lava/trap) so "# attackers" means enemies, not hazards.
+-- The "Other" fold (uid -1) is a real-attacker remainder, so it counts as ≥1.
+local function count_attackers(scratch)
+  local c = 0
+  for i = 1, (scratch.count or 0) do
+    local g = scratch[i]
+    if g and g.uid ~= 0 then c = c + 1 end
+  end
+  return c
+end
+
 local function copy_types(out_arr, scratch)
   local n = scratch.count or 0
   for i = 1, n do
@@ -221,7 +233,7 @@ local function on_player_dead()
       dtps      = Metrics.DTPS(now),
       abs       = Metrics.ABS(now),
       peak_dtps = Metrics.DTPS(now),     -- true peak needs the lead ring (incr. 2)
-      attackers = src_scratch.count or 0,
+      attackers = count_attackers(src_scratch),   -- enemies only (env bucket excluded)
       types     = {},
     },
     attacks = {},

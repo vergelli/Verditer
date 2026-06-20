@@ -32,6 +32,11 @@ ZO_CreateStringId("VERDITER_GRAPH_STOP",    "Stop")
 ZO_CreateStringId("VERDITER_GRAPH_FLUSH",   "Flush")
 ZO_CreateStringId("VERDITER_GRAPH_NO_DATA", "No data — press Record while taking damage.")
 
+-- Title-bar icon-button tooltips
+ZO_CreateStringId("VERDITER_TT_DEATHS",   "Deaths — browse this session's death recaps")
+ZO_CreateStringId("VERDITER_TT_EXPORT",   "Export the recorded session to CSV")
+ZO_CreateStringId("VERDITER_TT_SETTINGS", "Settings")
+
 -- Death Recap window (BACKLOG C)
 ZO_CreateStringId("VERDITER_RECAP_TITLE",       "Death Recap")
 ZO_CreateStringId("VERDITER_RECAP_DIED",        "YOU DIED")
@@ -45,3 +50,5 @@ ZO_CreateStringId("VERDITER_RECAP_KB",          "KB")
 ZO_CreateStringId("VERDITER_RECAP_OVERKILL",    "%d%% overkill")
 ZO_CreateStringId("VERDITER_RECAP_PRESSURE",    "peak %s DTPS  ·  %d attackers  ·  %s ABS eaten")
 ZO_CreateStringId("VERDITER_RECAP_EXPORT",      "Export")
+ZO_CreateStringId("VERDITER_RECAP_AGO_SEC",     "%ds ago")
+ZO_CreateStringId("VERDITER_RECAP_AGO_MIN",     "%dm %ds ago")
