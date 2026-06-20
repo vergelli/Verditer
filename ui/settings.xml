@@ -14,7 +14,7 @@
                      movable="true"
                      mouseEnabled="true">
 
-      <Dimensions x="280" y="230"/>
+      <Dimensions x="280" y="262"/>
 
       <OnMoveStop>Verditer.Settings.on_move_stop()</OnMoveStop>
 
@@ -130,6 +130,17 @@
           <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, TOP, GetString(VERDITER_TT_VPALPHA))</OnMouseEnter>
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Control>
+
+        <!-- ── Death Recap on/off toggle ───────────────────────────────── -->
+        <Button name="$(parent)RecapBtn"
+                mouseEnabled="true"
+                font="ZoFontGameSmall"
+                inherits="ZO_DefaultButton">
+          <Anchor point="BOTTOMLEFT"  offsetX="14"  offsetY="-76"/>
+          <Anchor point="BOTTOMRIGHT" offsetX="-14" offsetY="-76"/>
+          <Dimensions y="22"/>
+          <OnClicked>Verditer.Settings.on_recap_click()</OnClicked>
+        </Button>
 
         <!-- ── Logo visibility toggle ──────────────────────────────────── -->
         <Button name="$(parent)LogoBtn"

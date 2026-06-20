@@ -176,6 +176,14 @@ function M.on_move_stop()
   sv.settings.y = controls.window:GetTop()
 end
 
+function M.on_recap_click()
+  local now = not Verditer.DeathRecap.is_enabled()
+  Verditer.DeathRecap.set_enabled(now)
+  Verditer.Sound.play("CLICK")
+  controls.recap_btn:SetText(now and GetString(VERDITER_SETTINGS_RECAP_ON)
+                                 or GetString(VERDITER_SETTINGS_RECAP_OFF))
+end
+
 function M.on_logo_click()
   local now = not Verditer.Logo.is_enabled()
   Verditer.Logo.set_enabled(now)
@@ -292,11 +300,14 @@ function M.init()
   controls.track_vpalpha  = VerditerSettingsPanelSliderTrackVPAlpha
   controls.reset_btn      = VerditerSettingsPanelResetBtn
   controls.logo_btn       = VerditerSettingsPanelLogoBtn
+  controls.recap_btn      = VerditerSettingsPanelRecapBtn
 
   controls.window_title:SetText(GetString(VERDITER_SETTINGS_TITLE))
   controls.reset_btn:SetText(GetString(VERDITER_SETTINGS_RESET))
   controls.logo_btn:SetText(Verditer.Logo.is_enabled()
     and GetString(VERDITER_SETTINGS_LOGO_ON) or GetString(VERDITER_SETTINGS_LOGO_OFF))
+  controls.recap_btn:SetText(Verditer.DeathRecap.is_enabled()
+    and GetString(VERDITER_SETTINGS_RECAP_ON) or GetString(VERDITER_SETTINGS_RECAP_OFF))
 
   controls.title_sample:SetText(GetString(VERDITER_SETTING_SAMPLE_RATE))
   controls.title_sample:SetColor(0.78, 0.84, 0.95, 1)

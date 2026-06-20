@@ -43,6 +43,8 @@ local log = Verditer.Log.for_module("death_recap")
 -- state ───────────────────────────────────────────────────────────────────────
 local deaths  = {}    -- recent deaths, oldest..newest, capped at RECAP.MAX_DEATHS
 local sel_idx = 0     -- index currently shown in the window (1..#deaths)
+local enabled = true  -- Death Recap on/off (SavedVar, default on). When off the lead
+                      -- ring + death/respawn hooks are UNREGISTERED → genuinely zero cost.
 
 -- always-on lead-up ring: samples HP/DTPS/ABS at a fixed cadence so a death can
 -- freeze the last LEAD_SECONDS as the recap "film" — independent of whether the
@@ -339,15 +341,50 @@ function M.simulate()
   commit(rec)
 end
 
+-- start/stop the always-on machinery (lead ring + death/respawn hooks). Toggled by
+-- the Settings "Death Recap" switch so a user who doesn't want it pays nothing.
+local function start()
+  lead_w, lead_n = 1, 0
+  ev.register_update("VerditerRecapLead", lead_ms, lead_tick)
+  ev.register("VerditerRecapDead",  zc.EVENT_PLAYER_DEAD,  on_player_dead)
+  ev.register("VerditerRecapAlive", zc.EVENT_PLAYER_ALIVE, on_player_alive)
+end
+
+local function stop()
+  ev.unregister_update("VerditerRecapLead")
+  ev.unregister("VerditerRecapDead",  zc.EVENT_PLAYER_DEAD)
+  ev.unregister("VerditerRecapAlive", zc.EVENT_PLAYER_ALIVE)
+end
+
+function M.is_enabled() return enabled end
+
+function M.set_enabled(e)
+  e = not not e
+  if e == enabled then return end
+  enabled = e
+  local sv = Verditer.SavedVars
+  if sv then sv.recap = sv.recap or {}; sv.recap.enabled = e end
+  if e then
+    start()
+    log:info("death recap enabled")
+  else
+    stop()
+    M.clear()          -- hides the window + the Deaths button + frees the deaths ring
+    log:info("death recap disabled")
+  end
+end
+
 function M.init()
-  -- size + start the always-on lead ring
+  -- size the always-on lead ring (cheap, one-time; reused across enable/disable)
   lead_ms  = C.RECAP.LEAD_SAMPLE_MS or 250
   lead_cap = math_max(2, math_ceil((C.RECAP.LEAD_SECONDS or 10) * 1000 / lead_ms))
   for i = 1, lead_cap do lead_ring[i] = { t = 0, hp = -1, dtps = 0, abs = 0 } end
   lead_w, lead_n = 1, 0
-  ev.register_update("VerditerRecapLead", lead_ms, lead_tick)
 
-  ev.register("VerditerRecapDead", zc.EVENT_PLAYER_DEAD, on_player_dead)
-  ev.register("VerditerRecapAlive", zc.EVENT_PLAYER_ALIVE, on_player_alive)
-  log:info("init: lead ring cap=", lead_cap, " @", lead_ms, "ms")
+  local sv = Verditer.SavedVars
+  if sv then sv.recap = sv.recap or {}; if sv.recap.enabled == nil then sv.recap.enabled = true end end
+  enabled = (not sv) or (sv.recap.enabled ~= false)
+
+  if enabled then start() end
+  log:info("init: lead ring cap=", lead_cap, " @", lead_ms, "ms enabled=", tostring(enabled))
 end

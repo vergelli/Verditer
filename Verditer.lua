@@ -127,7 +127,7 @@ local function on_addon_loaded()
   local world = GetWorldName()
   Verditer.SavedVars = Verditer.zenimax.savedvars.new_account_wide(
     C.SV_TABLE, C.SV_VERSION, world,
-    { graph = {}, temporal = {}, settings = {}, logo = {}, copybox = {}, debug = {} })
+    { graph = {}, temporal = {}, settings = {}, logo = {}, recap = {}, copybox = {}, debug = {} })
 
   Log:info("savedvars opened: world=", world, "version=", C.SV_VERSION)
 
@@ -135,10 +135,10 @@ local function on_addon_loaded()
   Verditer.GC.init()           -- GC pacing (APOD #3): smooth the incremental collector
   Verditer.Pipeline.init()
   Verditer.Logo.init()
+  Verditer.DeathRecap.init()   -- read recap-enabled SV + wire hooks BEFORE Settings paints its toggle
   Verditer.Settings.init()
   Verditer.Graph.init()
-  Verditer.Recap.init()        -- build the recap window before the capturer wires up
-  Verditer.DeathRecap.init()   -- subscribe EVENT_PLAYER_DEAD
+  Verditer.Recap.init()        -- build the recap window (capturer fires only on a later death)
   Verditer.Visibility.init()
 
   SLASH_COMMANDS[C.SLASH_COMMAND] = on_slash

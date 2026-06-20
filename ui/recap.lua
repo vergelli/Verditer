@@ -191,6 +191,16 @@ local function build_content()
   controls.lead_base:SetColor(C_GRID.r, C_GRID.g, C_GRID.b, C_GRID.a)
   controls.shield_line = mk_tex("VerditerRecapShieldLine")
   controls.shield_line:SetColor(C_SHIELD.r, C_SHIELD.g, C_SHIELD.b, C_SHIELD.a)
+  -- The shield-break line is 1px (impossible to hover), so an invisible wider strip
+  -- sits over it carrying the tooltip that explains what the celeste line means.
+  controls.shield_hit = mk_tex("VerditerRecapShieldHit")
+  controls.shield_hit:SetColor(0, 0, 0, 0)
+  controls.shield_hit:SetMouseEnabled(true)
+  controls.shield_hit:SetDrawLevel(10)
+  controls.shield_hit:SetHandler("OnMouseEnter", function(self)
+    ZO_Tooltips_ShowTextTooltip(self, TOP, GetString(VERDITER_TT_SHIELD_BREAK))
+  end)
+  controls.shield_hit:SetHandler("OnMouseExit", function() ZO_Tooltips_HideTextTooltip() end)
 
   controls.lead_bars = {}
   controls.lead_reds = {}
@@ -263,6 +273,7 @@ local function render_lead(rec)
     controls.lead_reds[i]:SetHidden(true)
   end
   controls.shield_line:SetHidden(true)
+  controls.shield_hit:SetHidden(true)
   if n == 0 or cw <= FILM_X0 + 4 then hide_film_labels(); return end
 
   local film_w = cw - FILM_X0
@@ -308,6 +319,11 @@ local function render_lead(rec)
     controls.shield_line:SetAnchor(TOPLEFT, content, TOPLEFT, x, FILM_Y)
     controls.shield_line:SetDimensions(1, FILM_H)
     controls.shield_line:SetHidden(false)
+    -- wider invisible hover strip centred on the line (carries the tooltip)
+    controls.shield_hit:ClearAnchors()
+    controls.shield_hit:SetAnchor(TOPLEFT, content, TOPLEFT, x - 4, FILM_Y)
+    controls.shield_hit:SetDimensions(9, FILM_H)
+    controls.shield_hit:SetHidden(false)
   end
 
   controls.lead_hp100:ClearAnchors()

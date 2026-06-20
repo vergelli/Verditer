@@ -15,6 +15,8 @@ ZO_CreateStringId("VERDITER_SETTING_TIME_WINDOW",    "Time Window")
 ZO_CreateStringId("VERDITER_SETTING_VIEWPORT_ALPHA", "Viewport Alpha")
 ZO_CreateStringId("VERDITER_SETTINGS_LOGO_ON",       "Logo: Visible")
 ZO_CreateStringId("VERDITER_SETTINGS_LOGO_OFF",      "Logo: Hidden")
+ZO_CreateStringId("VERDITER_SETTINGS_RECAP_ON",      "Death Recap: On")
+ZO_CreateStringId("VERDITER_SETTINGS_RECAP_OFF",     "Death Recap: Off")
 ZO_CreateStringId("VERDITER_LOGO_HINT",              "Logo hidden. Bind a key to Verditer under Settings > Controls > Keybindings (Add-Ons), or type /verditer.")
 
 -- Heavy buffer warning (in chat) — args: window_s, hz, capacity.
@@ -42,6 +44,9 @@ ZO_CreateStringId("VERDITER_TT_ITP",      "Incoming Pressure — damage + shield
 ZO_CreateStringId("VERDITER_TT_SAMPLE",   "How often a bar is recorded (Hz) — higher = finer detail")
 ZO_CreateStringId("VERDITER_TT_TWINDOW",  "How many seconds the chart spans")
 ZO_CreateStringId("VERDITER_TT_VPALPHA",  "Opacity of the tinted background behind the chart")
+
+-- Death Recap: the celeste vertical line in the lead-up film.
+ZO_CreateStringId("VERDITER_TT_SHIELD_BREAK", "Shield broke here — damage hit your HP directly after this")
 
 -- Death Recap window (BACKLOG C)
 ZO_CreateStringId("VERDITER_RECAP_TITLE",       "Death Recap")
