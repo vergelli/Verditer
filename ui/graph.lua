@@ -95,10 +95,13 @@ local render_current_view   -- forward decl (hover helpers call it before it's d
 
 -- Hover card (increment 2): a small branded panel that follows the cursor —
 -- group swatch + name (in its colour) + "value DTPS · %". Replaces the plain tooltip.
-local CARD_W, CARD_H = 196, 42
+local CARD_W, CARD_H = 196, 56
 local C_CARD_BG     = { r = 0.04, g = 0.06, b = 0.12, a = 0.96 }  -- dark brand tint
 local C_CARD_ACCENT = { r = 0.18, g = 0.42, b = 0.88, a = 1.0 }   -- brand-blue left bar
 local C_CARD_STAT   = { r = 0.80, g = 0.84, b = 0.92, a = 1.0 }
+local C_CARD_NAME   = { r = 0.85, g = 0.90, b = 1.00, a = 1.0 }   -- moment-card title (non-stacked)
+local C_CARD_TIME   = { r = 0.60, g = 0.64, b = 0.72, a = 1.0 }   -- faint x-axis (time) line
+local C_CROSSHAIR   = { r = 0.44, g = 0.66, b = 1.00, a = 0.50 }  -- scrub line at hovered column
 
 -- small helpers
 local function fmt_val(v)
@@ -519,10 +522,11 @@ local function update_legend(groups)
   end
 end
 
--- Hover is allowed only on a frozen stacked session with data, while shown.
+-- Hover is allowed on any frozen view with data, while shown. Stacked views add the
+-- group highlight/dim; non-stacked views (OUTCOME/SURVIVAL) get crosshair + a moment
+-- card only (nothing to highlight).
 local function hover_allowed()
   return not Verditer.TemporalBuffer.is_recording()
-     and (current_view == VIEW_BY_DAMAGE_TYPE or current_view == VIEW_BY_SOURCE)
      and Verditer.TemporalBuffer.count() > 0
      and not controls.window:IsHidden()
 end
@@ -543,6 +547,7 @@ local function stop_hover_poll() zev.unregister_update("VerditerHoverPoll") end
 
 local function hide_hover_ui()
   if controls.card and controls.card.root then controls.card.root:SetHidden(true) end
+  if controls.crosshair then controls.crosshair:SetHidden(true) end
 end
 
 -- Build the cursor-following hover card once (parented to the window so it draws
@@ -592,20 +597,26 @@ local function build_hover_card()
   stat:SetAnchor(TOPLEFT, root, TOPLEFT, 12, 24)
   stat:SetDimensions(CARD_W - 20, 14)
 
-  controls.card = { root = root, swatch = swatch, name = name, stat = stat }
+  local time = WM:CreateControl("VerditerHoverCardTime", root, CT_LABEL)
+  time:SetFont("ZoFontGameSmall")
+  time:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+  time:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+  time:SetColor(C_CARD_TIME.r, C_CARD_TIME.g, C_CARD_TIME.b, 1.0)
+  time:SetAnchor(TOPLEFT, root, TOPLEFT, 12, 40)
+  time:SetDimensions(CARD_W - 20, 12)
+
+  controls.card = { root = root, swatch = swatch, name = name, stat = stat, time = time }
 end
 
--- Fill the card from a hovered band and pin it near the cursor (clamped on-screen).
-local function show_card(band, mx, my)
-  local card = controls.card
-  if not card then return end
-  card.swatch:SetColor(band.r, band.g, band.b, 1.0)
-  card.name:SetColor(band.r, band.g, band.b, 1.0)
-  card.name:SetText(hover_label(band))
-  local pct = math_floor((band.share or 0) * 100 + 0.5)
-  local val = (band.share or 0) * (band.dtps or 0)   -- this group's DTPS at the instant
-  card.stat:SetText(string_format("%s DTPS  ·  %d%%", fmt_readout(val), pct))
+-- hex of a colour table, for |c..|r markup in the card stat line
+local function hexc(c)
+  return string_format("%02x%02x%02x",
+    math_floor(c.r * 255 + 0.5), math_floor(c.g * 255 + 0.5), math_floor(c.b * 255 + 0.5))
+end
 
+-- Pin the card near the cursor, clamped on-screen (flips left/up near the edges).
+local function position_card(mx, my)
+  local card = controls.card
   local sw, sh = GuiRoot:GetDimensions()
   local x = mx + 16
   local y = my + 18
@@ -618,19 +629,50 @@ local function show_card(band, mx, my)
   card.root:SetHidden(false)
 end
 
+-- Group-mode card (stacked views): swatch + group name in its colour + value/%.
+-- elapsed_ms = the hovered column's time into the recording (the x-axis context).
+local function show_card(band, mx, my, elapsed_ms)
+  local card = controls.card
+  if not card then return end
+  card.swatch:SetColor(band.r, band.g, band.b, 1.0)
+  card.name:SetColor(band.r, band.g, band.b, 1.0)
+  card.name:SetText(hover_label(band))
+  local pct = math_floor((band.share or 0) * 100 + 0.5)
+  local val = (band.share or 0) * (band.dtps or 0)   -- this group's DTPS at the instant
+  card.stat:SetText(string_format("%s DTPS  ·  %d%%", fmt_readout(val), pct))
+  card.time:SetText("t  " .. fmt_secs(elapsed_ms or 0))
+  position_card(mx, my)
+end
+
+-- Moment-mode card (non-stacked views): no group to highlight, so just the column's
+-- values at that instant. `stat_text` may carry |c..|r markup for coloured values.
+local function show_moment_card(swatch_c, name_text, stat_text, elapsed_ms, mx, my)
+  local card = controls.card
+  if not card then return end
+  card.swatch:SetColor(swatch_c.r, swatch_c.g, swatch_c.b, 1.0)
+  card.name:SetColor(C_CARD_NAME.r, C_CARD_NAME.g, C_CARD_NAME.b, 1.0)
+  card.name:SetText(name_text)
+  card.stat:SetText(stat_text)
+  card.time:SetText("t  " .. fmt_secs(elapsed_ms or 0))
+  position_card(mx, my)
+end
+
 -- Map a cursor position (canvas-relative x, height above canvas bottom) to the
--- group band under it, using the hit index built during the last render.
+-- hovered column and (if over a segment) its group band, using the hit index built
+-- during the last render. Returns band (may be nil if above the stack) + the column
+-- (for the crosshair + time even when the cursor is above the bars).
 local function hover_pick(rel_x, height_above)
-  if hit.n == 0 or hit.slot_w <= 0 then return nil end
+  if hit.n == 0 or hit.slot_w <= 0 then return nil, nil end
   local i = math_floor(rel_x / hit.slot_w) - hit.offset + 1
-  if i < 1 or i > hit.n then return nil end
+  if i < 1 or i > hit.n then return nil, nil end
   local col = hit.cols[i]
-  if not col or rel_x < col.x0 or rel_x > col.x1 then return nil end
+  if not col or rel_x < col.x0 or rel_x > col.x1 then return nil, nil end
+  local band = nil
   for b = 1, col.nb do
-    local band = col.bands[b]
-    if height_above >= band.lo and height_above <= band.hi then return band end
+    local bd = col.bands[b]
+    if height_above >= bd.lo and height_above <= bd.hi then band = bd; break end
   end
-  return nil
+  return band, col
 end
 
 -- Poll while the cursor is over the canvas: re-highlight on group change, and keep
@@ -647,15 +689,43 @@ local function hover_poll()
   local above  = canvas:GetBottom() - my
   local cw, ch = canvas:GetWidth(), canvas:GetHeight()
 
-  local band = nil
+  local band, col = nil, nil
   if rel_x >= 0 and rel_x <= cw and above >= 0 and above <= ch then
-    band = hover_pick(rel_x, above)
+    band, col = hover_pick(rel_x, above)
   end
 
   local new = band and band.key or nil
   if new ~= hover_key then hover_key = new; render_current_view() end
 
-  if band then show_card(band, mx, my) else hide_hover_ui() end
+  if not col then hide_hover_ui(); return end
+
+  -- crosshair: a scrub line at the hovered column (shown whenever over a column,
+  -- even above the bars, so you can read the time anywhere in the slice)
+  if controls.crosshair then
+    local cx = math_floor((col.x0 + col.x1) * 0.5)
+    controls.crosshair:ClearAnchors()
+    controls.crosshair:SetAnchor(TOPLEFT,    canvas, TOPLEFT,    cx, 0)
+    controls.crosshair:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, cx, 0)
+    controls.crosshair:SetHidden(false)
+  end
+
+  local elapsed = (col.t and hit.t0) and (col.t - hit.t0) or 0
+  if band then
+    show_card(band, mx, my, elapsed)                      -- stacked: group card
+  elseif current_view == VIEW_OUTCOME then
+    show_moment_card(C_DTPS, "Incoming",
+      string_format("|c%s%s DTPS|r  ·  |c%s%s ABS|r",
+        hexc(C_DTPS), fmt_readout(col.dtps or 0), hexc(C_ABS), fmt_readout(col.abs or 0)),
+      elapsed, mx, my)
+  elseif current_view == VIEW_SURVIVAL then
+    local hp = col.hp or 0
+    if hp < 0 then hp = 0 end
+    show_moment_card(C_HP, "Survival",
+      string_format("|c%sHP  %d%%|r", hexc(C_HP), math_floor(hp * 100 + 0.5)),
+      elapsed, mx, my)
+  elseif controls.card and controls.card.root then
+    controls.card.root:SetHidden(true)                    -- stacked but above the stack
+  end
 end
 
 -- Toggle the hit layer with the gate; clear any stale highlight/tooltip when off.
@@ -673,6 +743,23 @@ local function update_hover_gate()
       if not controls.window:IsHidden() then render_current_view() end
     end
   end
+end
+
+-- Hit-index helpers (shared by all hoverable renders). hit_begin sets the per-render
+-- geometry; hit_col records a column's x-range, time and raw values. Stacked views
+-- additionally push y-bands per group (see render_stacked); OUTCOME/SURVIVAL leave
+-- nb = 0 and the poll reads the column values directly for the moment card.
+local function hit_begin(slot_w, offset, n)
+  hit.n = n; hit.slot_w = slot_w; hit.offset = offset
+end
+
+local function hit_col(i, x, bw, s)
+  if i == 1 then hit.t0 = s.t end          -- first sample = recording origin (x-axis 0)
+  local col = hit.cols[i]
+  if not col then col = { bands = {} }; hit.cols[i] = col end
+  col.x0 = x; col.x1 = x + bw; col.nb = 0; col.t = s.t
+  col.dtps = s.DTPS; col.abs = s.ABS; col.hp = s.hp_pct
+  return col
 end
 
 -- Shared stacked-bar renderer: per-tick column of height ∝ DTPS, segmented by a
@@ -708,9 +795,7 @@ local function render_stacked(groups_field, key_field)
   -- bookkeeping entirely while recording so the hot path stays untouched.
   local capture = not Verditer.TemporalBuffer.is_recording()
   local hk = hover_key   -- nil = no highlight; else dim every group but this key
-  if capture then
-    hit.n = n; hit.slot_w = slot_w; hit.offset = offset
-  end
+  if capture then hit_begin(slot_w, offset, n) end
 
   Verditer.TemporalBuffer.iterate(function(i, s)
     local x, bw = slot_rect(offset, i, slot_w, bar_gap)
@@ -718,12 +803,7 @@ local function render_stacked(groups_field, key_field)
     xs[i]     = x + bw * 0.5
     top_hs[i] = col_h
 
-    local col
-    if capture then
-      col = hit.cols[i]
-      if not col then col = { bands = {} }; hit.cols[i] = col end
-      col.x0 = x; col.x1 = x + bw; col.nb = 0
-    end
+    local col = capture and hit_col(i, x, bw, s) or nil
 
     local y_off  = 0
     local groups = s[groups_field]
@@ -822,8 +902,12 @@ local function render_outcome()
   local slot_w, bar_gap, offset = slot_geometry(cw)
   local xs, up_hs, down_ys = ro_xs, ro_up_hs, ro_down_ys
 
+  local capture = not Verditer.TemporalBuffer.is_recording()
+  if capture then hit_begin(slot_w, offset, n) end
+
   Verditer.TemporalBuffer.iterate(function(i, s)
     local x, bw   = slot_rect(offset, i, slot_w, bar_gap)
+    if capture then hit_col(i, x, bw, s) end
     local up_h    = math_min(half, math_max(0, math_floor(s.DTPS * up_scale   + 0.5)))
     local down_h  = math_min(half, math_max(0, math_floor(s.ABS  * down_scale + 0.5)))
     xs[i]      = x + bw * 0.5
@@ -915,8 +999,12 @@ local function render_survival_bars()
 
   local slot_w, bar_gap, offset = slot_geometry(cw)
 
+  local capture = not Verditer.TemporalBuffer.is_recording()
+  if capture then hit_begin(slot_w, offset, n) end
+
   Verditer.TemporalBuffer.iterate(function(i, s)
     local x, bw = slot_rect(offset, i, slot_w, bar_gap)
+    if capture then hit_col(i, x, bw, s) end
     local hp = s.hp_pct
     if hp < 0 then hp = 1 elseif hp > 1 then hp = 1 end
     local drop = s.hp_drop or 0
@@ -1218,6 +1306,15 @@ function M.init()
     hide_hover_ui()
     if hover_key ~= nil then hover_key = nil; render_current_view() end
   end)
+
+  -- crosshair scrub line (drawn above the bars, below the legend)
+  controls.crosshair = WINDOW_MANAGER:CreateControl("VerditerGraphCrosshair", controls.canvas, CT_TEXTURE)
+  controls.crosshair:SetTexture(FILL_TEXTURE)
+  controls.crosshair:SetTextureCoords(0, 0.05, 0, 1)
+  controls.crosshair:SetWidth(1)
+  controls.crosshair:SetColor(C_CROSSHAIR.r, C_CROSSHAIR.g, C_CROSSHAIR.b, C_CROSSHAIR.a)
+  controls.crosshair:SetDrawLevel(4)
+  controls.crosshair:SetHidden(true)
 
   build_hover_card()
 
