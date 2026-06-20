@@ -426,15 +426,16 @@ end
 
 function M.on_prev()
   local i = Verditer.DeathRecap.selected_idx() - 1
-  if i >= 1 then M.show_record(i) end
+  if i >= 1 then Verditer.Sound.play("PAGE"); M.show_record(i) end
 end
 
 function M.on_next()
   local i = Verditer.DeathRecap.selected_idx() + 1
-  if i <= Verditer.DeathRecap.count() then M.show_record(i) end
+  if i <= Verditer.DeathRecap.count() then Verditer.Sound.play("PAGE"); M.show_record(i) end
 end
 
 function M.on_close()
+  Verditer.Sound.play("WINDOW_CLOSE")
   controls.window:SetHidden(true)
 end
 
@@ -468,9 +469,11 @@ end
 function M.toggle()
   if controls.window:IsHidden() then
     if Verditer.DeathRecap.count() > 0 then
+      Verditer.Sound.play("WINDOW_OPEN")
       M.show_record(Verditer.DeathRecap.selected_idx())
     end
   else
+    Verditer.Sound.play("WINDOW_CLOSE")
     controls.window:SetHidden(true)
   end
 end

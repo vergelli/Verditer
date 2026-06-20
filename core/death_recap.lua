@@ -174,7 +174,10 @@ local function commit(rec)
   sel_idx = #deaths
   log:info("death committed: attacks=", #rec.attacks, " killer=",
            rec.killer and rec.killer.name or "?")
-  if Verditer.Recap then Verditer.Recap.show_record(sel_idx) end
+  if Verditer.Recap then
+    if Verditer.Sound then Verditer.Sound.play("WINDOW_OPEN") end
+    Verditer.Recap.show_record(sel_idx)
+  end
   -- a new death exists → make the graph's "Deaths" browser button discoverable
   if Verditer.Graph and Verditer.Graph.notify_deaths_changed then
     Verditer.Graph.notify_deaths_changed()

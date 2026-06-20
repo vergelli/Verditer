@@ -143,7 +143,7 @@ local function build()
 
   local bg = WINDOW_MANAGER:CreateControl("$(parent)Bg", win, CT_BACKDROP)
   bg:SetAnchorFill(win)
-  bg:SetEdgeTexture("EsoUI/Art/Tooltips/UI-Border.dds", 128, 16, 6)
+  bg:SetEdgeTexture("EsoUI/Art/Tooltips/UI-Border.dds", 128, 16, 8)
   bg:SetCenterTexture("EsoUI/Art/Tooltips/UI-TooltipCenter.dds")
   bg:SetInsets(6, 6, -6, -6)
   bg:SetCenterColor(TINT.r, TINT.g, TINT.b, 0.94)
@@ -210,6 +210,7 @@ function M.show_text(hint, text)
   controls.edit:SetText(text or "")
   controls.window:SetHidden(false)
   controls.window:BringWindowToTop()
+  if Verditer.Sound then Verditer.Sound.play("WINDOW_OPEN") end
 end
 
 -- Build the session CSV and show it, warning if it didn't all fit.
@@ -231,5 +232,10 @@ function M.show_session()
   return not truncated
 end
 
-function M.hide() if controls then controls.window:SetHidden(true) end end
+function M.hide()
+  if controls then
+    if Verditer.Sound then Verditer.Sound.play("WINDOW_CLOSE") end
+    controls.window:SetHidden(true)
+  end
+end
 function M.is_visible() return controls ~= nil and not controls.window:IsHidden() end

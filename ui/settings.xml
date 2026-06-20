@@ -23,7 +23,7 @@
         <Backdrop name="$(parent)Bg">
           <AnchorFill/>
           <Edge file="EsoUI/Art/Tooltips/UI-Border.dds"
-                edgeFileWidth="128" edgeFileHeight="16" edgeSize="6"/>
+                edgeFileWidth="128" edgeFileHeight="16" edgeSize="8"/>
           <Center file="EsoUI/Art/Tooltips/UI-TooltipCenter.dds"/>
           <Insets left="6" top="6" right="-6" bottom="-6"/>
         </Backdrop>

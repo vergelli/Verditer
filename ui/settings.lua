@@ -153,9 +153,11 @@ function M.toggle()
   local win    = controls.window
   local hidden = win:IsHidden()
   if hidden then
+    Verditer.Sound.play("WINDOW_OPEN")
     win:SetHidden(false)
     refresh_all_sliders()
   else
+    Verditer.Sound.play("WINDOW_CLOSE")
     win:SetHidden(true)
   end
 end
@@ -183,6 +185,7 @@ function M.on_sample_track_click(control)
   local pct = math_max(0, math_min(1, (cx - control:GetLeft()) / track_w))
   local idx = math_max(1, math_min(#SAMPLE_PRESETS, math_floor(pct * (#SAMPLE_PRESETS - 1) + 0.5) + 1))
   current_sample = SAMPLE_PRESETS[idx]
+  Verditer.Sound.slider()
   log:info("sample_rate ->", current_sample, "ms")
   persist_temporal("sample_rate_ms", current_sample)
   reinit_buffer()
@@ -196,6 +199,7 @@ function M.on_twindow_track_click(control)
   local pct = math_max(0, math_min(1, (cx - control:GetLeft()) / track_w))
   local idx = math_max(1, math_min(#TWINDOW_PRESETS, math_floor(pct * (#TWINDOW_PRESETS - 1) + 0.5) + 1))
   current_twindow = TWINDOW_PRESETS[idx]
+  Verditer.Sound.slider()
   log:info("time_window ->", current_twindow, "s")
   persist_temporal("time_window_s", current_twindow)
   reinit_buffer()
@@ -209,6 +213,7 @@ function M.on_vpalpha_track_click(control)
   local pct = math_max(0, math_min(1, (cx - control:GetLeft()) / track_w))
   local idx = math_max(1, math_min(#VPALPHA_PRESETS, math_floor(pct * (#VPALPHA_PRESETS - 1) + 0.5) + 1))
   current_vpalpha = VPALPHA_PRESETS[idx]
+  Verditer.Sound.slider()
   log:info("viewport_alpha ->", current_vpalpha, "%")
   persist_graph("viewport_alpha_pct", current_vpalpha)
   Verditer.Graph.set_viewport_alpha(current_vpalpha / 100)
@@ -216,6 +221,7 @@ function M.on_vpalpha_track_click(control)
 end
 
 function M.on_reset_click()
+  Verditer.Sound.play("CLICK")
   log:info("reset to defaults")
   current_sample  = SAMPLE_DEFAULT
   current_twindow = TWINDOW_DEFAULT

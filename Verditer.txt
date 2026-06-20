@@ -17,6 +17,7 @@ bindings.xml
 locales/default.lua
 locales/$(language).lua
 core/constants.lua
+core/sound.lua
 lib/mem/buffer_pool.lua
 lib/mem/ring_buffer.lua
 lib/mem/event.lua

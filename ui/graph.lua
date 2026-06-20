@@ -1147,6 +1147,7 @@ function M.current_view() return current_view end
 
 function M.on_record_click()
   if Verditer.TemporalBuffer.is_recording() then return end
+  Verditer.Sound.play("RECORD")
   log:info("record click")
   Verditer.TemporalBuffer.clear()
   release_all_pools()
@@ -1167,6 +1168,7 @@ end
 
 function M.on_stop_click()
   if not Verditer.TemporalBuffer.is_recording() then return end
+  Verditer.Sound.play("STOP")
   log:info("stop click")
   Verditer.TemporalBuffer.stop_recording()
   zev.unregister_update(Verditer.Constants.TEMPORAL.UPDATE_NAME)
@@ -1175,6 +1177,7 @@ function M.on_stop_click()
 end
 
 function M.on_flush_click()
+  Verditer.Sound.play("FLUSH")
   if Verditer.TemporalBuffer.is_recording() then
     zev.unregister_update(Verditer.Constants.TEMPORAL.UPDATE_NAME)
     Verditer.TemporalBuffer.stop_recording()
@@ -1193,6 +1196,7 @@ function M.on_flush_click()
 end
 
 function M.on_close_click()
+  Verditer.Sound.play("WINDOW_CLOSE")
   Verditer.Visibility.set("graph", false)
   release_all_pools()
   hide_legend()
@@ -1262,6 +1266,7 @@ function M.toggle()
   local now_visible = not Verditer.Visibility.get("graph")
   log:info("toggle ->", now_visible and "show" or "hide")
   Verditer.Visibility.set("graph", now_visible)
+  Verditer.Sound.play(now_visible and "WINDOW_OPEN" or "WINDOW_CLOSE")
   if now_visible then
     render_current_view()
     update_hover_gate()
@@ -1366,6 +1371,16 @@ function M.init()
   controls.btn_record:SetText(GetString(VERDITER_GRAPH_RECORD))
   controls.btn_stop:SetText(GetString(VERDITER_GRAPH_STOP))
   controls.btn_flush:SetText(GetString(VERDITER_GRAPH_FLUSH))
+  -- semantic colour-coding (personality + readability): Record = go/brand-blue,
+  -- Stop = amber pause, Flush = danger red (it destroys the session).
+  local function tint_btn(btn, r, g, b)
+    btn:SetNormalFontColor(r, g, b, 1)
+    btn:SetMouseOverFontColor(math_min(1, r + 0.12), math_min(1, g + 0.12), math_min(1, b + 0.12), 1)
+    btn:SetPressedFontColor(r * 0.85, g * 0.85, b * 0.85, 1)
+  end
+  tint_btn(controls.btn_record, 0.44, 0.70, 1.00)   -- brand blue
+  tint_btn(controls.btn_stop,   0.96, 0.80, 0.34)   -- amber
+  tint_btn(controls.btn_flush,  0.93, 0.40, 0.34)   -- danger red
   controls.status:SetText("")
   controls.status:SetColor(0.65, 0.65, 0.65, 1)
   controls.no_data:SetText(GetString(VERDITER_GRAPH_NO_DATA))

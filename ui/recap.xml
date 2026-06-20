@@ -23,7 +23,7 @@
         <Backdrop name="$(parent)Bg">
           <AnchorFill/>
           <Edge file="EsoUI/Art/Tooltips/UI-Border.dds"
-                edgeFileWidth="128" edgeFileHeight="16" edgeSize="6"/>
+                edgeFileWidth="128" edgeFileHeight="16" edgeSize="8"/>
           <Center file="EsoUI/Art/Tooltips/UI-TooltipCenter.dds"/>
           <Insets left="6" top="6" right="-6" bottom="-6"/>
         </Backdrop>
@@ -71,8 +71,7 @@
         <!-- Footer: prev / index / next + Export -->
         <Button name="$(parent)PrevBtn"
                 mouseEnabled="true"
-                mouseOverBlendMode="ADD"
-                inherits="ZO_ButtonBehaviorClickSound">
+                mouseOverBlendMode="ADD">
           <Anchor point="BOTTOMLEFT" offsetX="16" offsetY="-12"/>
           <Dimensions x="22" y="22"/>
           <Textures normal="EsoUI/Art/Buttons/large_leftarrow_up.dds"
@@ -91,8 +90,7 @@
 
         <Button name="$(parent)NextBtn"
                 mouseEnabled="true"
-                mouseOverBlendMode="ADD"
-                inherits="ZO_ButtonBehaviorClickSound">
+                mouseOverBlendMode="ADD">
           <Anchor point="BOTTOMLEFT" offsetX="138" offsetY="-12"/>
           <Dimensions x="22" y="22"/>
           <Textures normal="EsoUI/Art/Buttons/large_rightarrow_up.dds"
