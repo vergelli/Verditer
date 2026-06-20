@@ -40,6 +40,18 @@ Verditer.Constants = {
     EVENT_CAPACITY = 4096,
   },
 
+  -- GC pacing (APOD lever #3, addresses F6). The Assess found the real-world hitches
+  -- (30-135ms render spikes, min fps ~5) are Lua GC ATOMIC pauses landing inside render
+  -- frames (confirmed by negative heap-delta on budget breaches). Driving a little GC
+  -- every frame keeps the incremental collector ahead so it never needs a big atomic
+  -- pause — the documented real-time-games technique. Conservative + tunable; flip
+  -- PACING=false to A/B. STEP_KB = per-tick step size; INTERVAL_MS 0 = every frame.
+  GC = {
+    PACING      = true,
+    STEP_KB     = 2,
+    INTERVAL_MS = 0,
+  },
+
   ABILITY_KIND = {
     DMG_IN = 1,   -- reached HP   (DTPS)
     ABS_IN = 2,   -- ate by shield (ABS)

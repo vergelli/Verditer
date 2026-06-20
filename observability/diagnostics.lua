@@ -232,6 +232,9 @@ function M.full_report(include_gc)
   if Verditer.Profiler and Verditer.Profiler.report_lines then
     section("profiler",   Verditer.Profiler.report_lines())
   end
+  if Verditer.GC and Verditer.GC.report_lines then
+    section("gc pacing",  Verditer.GC.report_lines())
+  end
   if Verditer.Validation and Verditer.Validation.report_lines then
     section("validation", Verditer.Validation.report_lines())
   end

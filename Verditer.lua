@@ -132,6 +132,7 @@ local function on_addon_loaded()
   Log:info("savedvars opened: world=", world, "version=", C.SV_VERSION)
 
   if C.DEBUG then Verditer.Probe.init() end
+  Verditer.GC.init()           -- GC pacing (APOD #3): smooth the incremental collector
   Verditer.Pipeline.init()
   Verditer.Logo.init()
   Verditer.Settings.init()
