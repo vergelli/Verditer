@@ -52,13 +52,18 @@ local N_HGRID      = 3
 local N_VGRID      = 3
 local TIME_STRIP_H = 18
 
--- BY_SOURCE legend (top-right overlay): one row per attacker in the latest sample.
-local LEGEND_MAX   = 8
-local LEGEND_W     = 138
+-- BY_SOURCE legend (top-right overlay): a KEY, not the full breakdown. Capped to
+-- top-(LEGEND_SHOW-1) + a rolled "Other +N" row so it never grows tall enough to
+-- bury the plot when many attackers stack (BACKLOG N). Kept translucent + narrow
+-- to stay out of the way; the stack itself still shows every group's colour.
+local LEGEND_MAX   = 8     -- size of the row control array (data cap from the metric)
+local LEGEND_SHOW  = 5     -- max legend rows: top-4 individual + one rolled "Other"
+local LEGEND_W     = 122
 local LEGEND_ROW_H = 14
 local LEGEND_PAD   = 4
-local C_LEGEND_BG  = { r = 0.04, g = 0.06, b = 0.12, a = 0.74 }
+local C_LEGEND_BG  = { r = 0.04, g = 0.06, b = 0.12, a = 0.58 }
 local C_LEGEND_LBL = { r = 0.88, g = 0.91, b = 0.97, a = 1.0 }
+local C_LEGEND_ROLL = { r = 0.55, g = 0.55, b = 0.58, a = 1.0 }  -- grey: the "Other +N" fold
 local C_GRID_LINE = { r = 0.55, g = 0.58, b = 0.70, a = 0.25 }
 local C_GRID_LBL  = { r = 0.82, g = 0.85, b = 0.90, a = 0.92 }
 local C_TIME_LBL  = { r = 0.68, g = 0.70, b = 0.75, a = 0.85 }
@@ -449,35 +454,48 @@ end
 local function update_legend(groups)
   local L = controls.legend
   if not L then return end
-  local n = (groups and (groups.count or 0)) or 0
-  if n == 0 then hide_legend() return end
-  if n > LEGEND_MAX then n = LEGEND_MAX end
+  local total = (groups and (groups.count or 0)) or 0
+  if total == 0 then hide_legend() return end
 
-  local canvas   = controls.canvas
-  local block_h  = LEGEND_PAD * 2 + n * LEGEND_ROW_H
+  -- A legend is a key, not the breakdown: show at most LEGEND_SHOW rows. When
+  -- there are more groups, the last row rolls the remainder into "Other +N" (its
+  -- summed share), so the block height is bounded and never buries the plot.
+  local rows   = (total < LEGEND_SHOW) and total or LEGEND_SHOW
+  local rolled = total > LEGEND_SHOW
+
+  local canvas  = controls.canvas
+  local block_h = LEGEND_PAD * 2 + rows * LEGEND_ROW_H
   L.bg:ClearAnchors()
   L.bg:SetAnchor(TOPRIGHT, canvas, TOPRIGHT, -2, 2)
   L.bg:SetDimensions(LEGEND_W, block_h)
   L.bg:SetHidden(false)
 
-  for i = 1, n do
-    local grp = groups[i]
+  for i = 1, rows do
     local row = L.rows[i]
     local y   = LEGEND_PAD + (i - 1) * LEGEND_ROW_H
 
     row.sw:ClearAnchors()
     row.sw:SetAnchor(TOPLEFT, L.bg, TOPLEFT, LEGEND_PAD, y + 2)
-    row.sw:SetColor(grp.r, grp.g, grp.b, 1.0)
-    row.sw:SetHidden(false)
-
     row.lbl:ClearAnchors()
     row.lbl:SetAnchor(TOPLEFT, L.bg, TOPLEFT, LEGEND_PAD + 16, y)
-    row.lbl:SetText(string_format("%s  %d%%", source_label(grp),
-                                  math_floor(grp.share * 100 + 0.5)))
+
+    if rolled and i == rows then
+      local rest = 0
+      for g = rows, total do rest = rest + (groups[g].share or 0) end
+      row.sw:SetColor(C_LEGEND_ROLL.r, C_LEGEND_ROLL.g, C_LEGEND_ROLL.b, 1.0)
+      row.lbl:SetText(string_format("Other +%d  %d%%", total - rows + 1,
+                                    math_floor(rest * 100 + 0.5)))
+    else
+      local grp = groups[i]
+      row.sw:SetColor(grp.r, grp.g, grp.b, 1.0)
+      row.lbl:SetText(string_format("%s  %d%%", source_label(grp),
+                                    math_floor(grp.share * 100 + 0.5)))
+    end
+    row.sw:SetHidden(false)
     row.lbl:SetHidden(false)
   end
 
-  for i = n + 1, LEGEND_MAX do
+  for i = rows + 1, LEGEND_MAX do
     L.rows[i].sw:SetHidden(true)
     L.rows[i].lbl:SetHidden(true)
   end
@@ -741,6 +759,7 @@ local function refresh_button_colors()
   if controls.btn_export then
     controls.btn_export:SetHidden(recording or Verditer.TemporalBuffer.count() == 0)
   end
+  M.notify_deaths_changed()
 end
 
 local function persist_view()
@@ -827,6 +846,9 @@ function M.on_flush_click()
     Verditer.TemporalBuffer.stop_recording()
   end
   Verditer.TemporalBuffer.clear()
+  -- Flush ends the session → discard its death recaps too (they belong to the
+  -- recording; keeping them past Flush just holds memory). See DeathRecap.clear.
+  if Verditer.DeathRecap and Verditer.DeathRecap.clear then Verditer.DeathRecap.clear() end
   release_all_pools()
   hide_grid(controls.grid)
   hide_legend()
@@ -844,6 +866,22 @@ end
 
 function M.on_export_click()
   Verditer.Export.show_session()
+end
+
+-- Deaths browser: open the recap and page through every death of the session
+-- (prev/next already live in the recap window). No-op if nothing died yet.
+function M.on_deaths_click()
+  if not (Verditer.DeathRecap and Verditer.DeathRecap.count() > 0) then return end
+  if Verditer.Recap and Verditer.Recap.toggle then Verditer.Recap.toggle() end
+end
+
+-- Show the Deaths button only when the session has at least one recorded death.
+-- Called when a death commits, on Flush (clear), and on every button refresh.
+function M.notify_deaths_changed()
+  if controls.btn_deaths then
+    local has = Verditer.DeathRecap and Verditer.DeathRecap.count() > 0
+    controls.btn_deaths:SetHidden(not has)
+  end
 end
 
 function M.on_move_stop()
@@ -912,6 +950,7 @@ function M.init()
   controls.readout       = VerditerGraphWindowReadoutLabel
   controls.itp_icon      = VerditerGraphWindowItpIcon
   controls.btn_export    = VerditerGraphWindowExportBtn
+  controls.btn_deaths    = VerditerGraphWindowDeathsBtn
 
   local sv = Verditer.SavedVars
   sv.graph = sv.graph or {}

@@ -139,6 +139,10 @@ local function commit(rec)
   log:info("death committed: attacks=", #rec.attacks, " killer=",
            rec.killer and rec.killer.name or "?")
   if Verditer.Recap then Verditer.Recap.show_record(sel_idx) end
+  -- a new death exists → make the graph's "Deaths" browser button discoverable
+  if Verditer.Graph and Verditer.Graph.notify_deaths_changed then
+    Verditer.Graph.notify_deaths_changed()
+  end
 end
 
 -- Read the server killing-attacks list and finalize the pending record.
@@ -219,6 +223,26 @@ function M.select(idx)
   return false
 end
 
+-- Drop every recorded death. A "session" = ONE recording (Record → Stop/Flush),
+-- so Flush ends the session and its recaps belong to it: discard them to free
+-- memory (they live in their own ring, independent of the metrics FIFO). Closes
+-- the window if it was showing a now-gone death and updates the graph button.
+function M.clear()
+  for i = #deaths, 1, -1 do deaths[i] = nil end
+  sel_idx = 0
+  if Verditer.Recap and Verditer.Recap.on_close then Verditer.Recap.on_close() end
+  if Verditer.Graph and Verditer.Graph.notify_deaths_changed then
+    Verditer.Graph.notify_deaths_changed()
+  end
+  log:info("deaths cleared")
+end
+
+-- Respawn: keep the recap visible WHILE dead, but hide it the moment we revive.
+-- (Hide only — the ring is NOT cleared here; Flush owns clearing, see M.clear.)
+local function on_player_alive()
+  if Verditer.Recap and Verditer.Recap.on_close then Verditer.Recap.on_close() end
+end
+
 -- DEBUG: synthesize a believable death so the window can be previewed with no
 -- actual death (probe-first discipline). Includes a fake lead-up film.
 function M.simulate()
@@ -281,5 +305,6 @@ function M.init()
   ev.register_update("VerditerRecapLead", lead_ms, lead_tick)
 
   ev.register("VerditerRecapDead", zc.EVENT_PLAYER_DEAD, on_player_dead)
+  ev.register("VerditerRecapAlive", zc.EVENT_PLAYER_ALIVE, on_player_alive)
   log:info("init: lead ring cap=", lead_cap, " @", lead_ms, "ms")
 end

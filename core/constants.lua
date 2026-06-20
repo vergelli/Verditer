@@ -46,7 +46,8 @@ Verditer.Constants = {
     SERVER_DELAY_MS = 2000,   -- match ESO's DEATH_RECAP_DELAY before reading
     LEAD_SECONDS    = 10,     -- seconds of lead-up "film" to freeze
     LEAD_SAMPLE_MS  = 250,    -- always-on lead ring cadence (10s / 250ms = 40 frames)
-    MAX_DEATHS      = 5,      -- ring of recent deaths for prev/next navigation
+    MAX_DEATHS      = 25,     -- ring of session deaths for prev/next navigation
+                              -- (cleared on Flush, so bounded to one recording)
     MAX_ATTACKS     = 6,      -- final-blows rows to show
   },
 
