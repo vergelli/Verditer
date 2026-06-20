@@ -36,6 +36,7 @@ ZO_CreateStringId("VERDITER_GRAPH_NO_DATA", "No data — press Record while taki
 ZO_CreateStringId("VERDITER_TT_DEATHS",   "Deaths — browse this session's death recaps")
 ZO_CreateStringId("VERDITER_TT_EXPORT",   "Export the recorded session to CSV")
 ZO_CreateStringId("VERDITER_TT_SETTINGS", "Settings")
+ZO_CreateStringId("VERDITER_TT_ITP",      "Incoming Pressure — damage + shielded, per second")
 
 -- Death Recap window (BACKLOG C)
 ZO_CreateStringId("VERDITER_RECAP_TITLE",       "Death Recap")

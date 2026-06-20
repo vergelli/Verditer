@@ -176,17 +176,23 @@
         <!-- Live ITP readout: armor icon (idle/active) + current ITP value.
              Sits in the TITLE row on the LEFT, just after the title. -->
         <Texture name="$(parent)ItpIcon"
-                 textureFile="/esoui/art/treeicons/collection_indexicon_armor_up.dds">
+                 textureFile="/esoui/art/treeicons/collection_indexicon_armor_up.dds"
+                 mouseEnabled="true">
           <Anchor point="TOPLEFT" offsetX="174" offsetY="6"/>
           <Dimensions x="26" y="26"/>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, BOTTOM, GetString(VERDITER_TT_ITP))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Texture>
 
         <Label name="$(parent)ReadoutLabel"
                font="ZoFontGameLarge"
                horizontalAlignment="LEFT"
-               verticalAlignment="CENTER">
+               verticalAlignment="CENTER"
+               mouseEnabled="true">
           <Anchor point="TOPLEFT" offsetX="204" offsetY="6"/>
           <Dimensions x="92" y="26"/>
+          <OnMouseEnter>ZO_Tooltips_ShowTextTooltip(self, BOTTOM, GetString(VERDITER_TT_ITP))</OnMouseEnter>
+          <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Label>
 
         <!-- View navigation: [<<] [OUTCOME] [>] — controls row, far right. -->
