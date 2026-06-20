@@ -93,6 +93,7 @@ end
 local C_HP_FULL = { 0.30, 0.80, 0.45 }
 local C_HP_MID  = { 0.95, 0.78, 0.30 }
 local C_HP_LOW  = { 0.92, 0.26, 0.22 }
+local C_FRESH   = { 0.95, 0.25, 0.22 }   -- red band: HP torn off this frame
 local function hp_color(hp)
   local a, b, t
   if hp >= 0.5 then a, b, t = C_HP_MID, C_HP_FULL, (hp - 0.5) * 2
@@ -181,8 +182,10 @@ local function build_content()
   controls.shield_line:SetColor(C_SHIELD.r, C_SHIELD.g, C_SHIELD.b, C_SHIELD.a)
 
   controls.lead_bars = {}
+  controls.lead_reds = {}
   for i = 1, LEAD_BARS do
-    controls.lead_bars[i] = mk_tex("VerditerRecapLeadBar" .. i)   -- colour set per-frame
+    controls.lead_bars[i] = mk_tex("VerditerRecapLeadBar" .. i)   -- HP silhouette, colour per-frame
+    controls.lead_reds[i] = mk_tex("VerditerRecapLeadRed" .. i)   -- fresh-damage cap (red)
   end
 
   controls.lead_hp100  = mk_label("VerditerRecapHp100", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_RIGHT)
@@ -244,7 +247,10 @@ local function render_lead(rec)
   controls.lead_base:SetWidth((cw - FILM_X0) > 1 and (cw - FILM_X0) or 1)
   controls.lead_base:SetHidden(n == 0)
 
-  for i = 1, LEAD_BARS do controls.lead_bars[i]:SetHidden(true) end
+  for i = 1, LEAD_BARS do
+    controls.lead_bars[i]:SetHidden(true)
+    controls.lead_reds[i]:SetHidden(true)
+  end
   controls.shield_line:SetHidden(true)
   if n == 0 or cw <= FILM_X0 + 4 then hide_film_labels(); return end
 
@@ -266,6 +272,22 @@ local function render_lead(rec)
     b:SetAnchor(BOTTOMLEFT, content, TOPLEFT, left, baseline_y)
     b:SetDimensions(bw, h)
     b:SetHidden(false)
+
+    -- red cap = HP torn off this frame, sitting exactly where the green fell from
+    -- (so the bar's full height marks where HP stood at the start of the frame).
+    local drop = s.hp_drop or 0
+    if drop < 0 then drop = 0 end
+    local deficit = 1 - hp
+    if drop > deficit then drop = deficit end
+    local rh = math_floor(drop * FILM_H + 0.5)
+    if rh > 0 then
+      local rd = controls.lead_reds[i]
+      rd:SetColor(C_FRESH[1], C_FRESH[2], C_FRESH[3], 0.95)
+      rd:ClearAnchors()
+      rd:SetAnchor(BOTTOMLEFT, content, TOPLEFT, left, baseline_y - h)   -- on top of the green
+      rd:SetDimensions(bw, rh)
+      rd:SetHidden(false)
+    end
   end
 
   local sb = rec.lead.shield_break

@@ -118,15 +118,39 @@ local function freeze_lead(rec)
   local cap    = lead_cap
   local oldest = (n >= cap) and lead_w or 1
   local peak, last_shield = 0, 0
+  local prev_hp = -1
   for i = 1, n do
     local idx = ((oldest - 1 + i - 1) % cap) + 1
     local s   = lead_ring[idx]
     local d   = lead[i]
     if not d then d = {}; lead[i] = d end
     d.t = s.t; d.hp = s.hp; d.dtps = s.dtps; d.abs = s.abs
+    -- fresh HP lost this frame = the drop from the previous sample. Drawn as a red
+    -- band capping the green silhouette (the chunk torn off that 250 ms).
+    local hp = s.hp or 0
+    d.hp_drop = (prev_hp >= 0 and hp >= 0) and math_max(0, prev_hp - hp) or 0
+    prev_hp = hp
     if (s.dtps or 0) > peak then peak = s.dtps end
     if (s.abs or 0) > 0 then last_shield = i end
   end
+
+  -- Append an exact hp=0 frame at the death instant. The 250 ms ring rarely lands
+  -- on the exact moment of death, so the silhouette would otherwise stop short of
+  -- the floor. This final frame plunges to 0; its hp_drop = the last living HP, so
+  -- the killing fall reads as a tall red column reaching down to where HP was.
+  if n > 0 then
+    local last = lead[n]
+    local zi   = n + 1
+    local d    = lead[zi]
+    if not d then d = {}; lead[zi] = d end
+    d.t       = (last.t or 0) + lead_ms
+    d.hp      = 0
+    d.dtps    = last.dtps or 0
+    d.abs     = 0
+    d.hp_drop = math_max(0, last.hp or 0)
+    n = zi
+  end
+
   lead.count        = n
   lead.shield_break = (last_shield > 0 and last_shield < n) and last_shield or nil
   if peak > 0 and rec.pressure then rec.pressure.peak_dtps = peak end
@@ -280,15 +304,19 @@ function M.simulate()
 
   -- synthetic lead-up film: HP accelerating to 0, shield gone at ~70% through
   local N = 40
+  local prev = -1
   for i = 1, N do
     local f  = i / N
     local hp = math_max(0, 1.0 - f * f * 1.05)
+    if i == N then hp = 0 end
     rec.lead[i] = {
-      t    = now - (N - i) * 250,
-      hp   = (i == N) and 0 or hp,
-      dtps = 4000 + 14000 * f,
-      abs  = (f < 0.7) and (2000 * (1 - f)) or 0,
+      t       = now - (N - i) * 250,
+      hp      = hp,
+      dtps    = 4000 + 14000 * f,
+      abs     = (f < 0.7) and (2000 * (1 - f)) or 0,
+      hp_drop = (prev >= 0) and math_max(0, prev - hp) or 0,
     }
+    prev = hp
   end
   rec.lead.count        = N
   rec.lead.shield_break = math_floor(N * 0.7)
