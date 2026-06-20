@@ -89,10 +89,16 @@ local prev_hp = -1   -- previous sample's hp_pct, for the fresh-loss (red) band
 -- builds a hit index as it draws (per-column x-range + each group's y-band); the
 -- poll then maps the cursor to a band by pure lookup. nil hover_key = no highlight.
 local hover_key  = nil
-local hover_text = nil
 local hit = { cols = {}, n = 0, slot_w = 0, offset = 0 }
 local C_DIM_BIAS = 0.05   -- dim = darken+desaturate toward this, at low alpha
 local render_current_view   -- forward decl (hover helpers call it before it's defined)
+
+-- Hover card (increment 2): a small branded panel that follows the cursor —
+-- group swatch + name (in its colour) + "value DTPS · %". Replaces the plain tooltip.
+local CARD_W, CARD_H = 196, 42
+local C_CARD_BG     = { r = 0.04, g = 0.06, b = 0.12, a = 0.96 }  -- dark brand tint
+local C_CARD_ACCENT = { r = 0.18, g = 0.42, b = 0.88, a = 1.0 }   -- brand-blue left bar
+local C_CARD_STAT   = { r = 0.80, g = 0.84, b = 0.92, a = 1.0 }
 
 -- small helpers
 local function fmt_val(v)
@@ -513,12 +519,6 @@ local function update_legend(groups)
   end
 end
 
--- hex for ESO |c colour markup (the hover tooltip names the group in its colour)
-local function hexcol(r, g, b)
-  return string_format("%02x%02x%02x",
-    math_floor((r or 1) * 255 + 0.5), math_floor((g or 1) * 255 + 0.5), math_floor((b or 1) * 255 + 0.5))
-end
-
 -- Hover is allowed only on a frozen stacked session with data, while shown.
 local function hover_allowed()
   return not Verditer.TemporalBuffer.is_recording()
@@ -542,9 +542,80 @@ end
 local function stop_hover_poll() zev.unregister_update("VerditerHoverPoll") end
 
 local function hide_hover_ui()
-  ZO_Tooltips_HideTextTooltip()
-  hover_text = nil
-  if controls.hover_anchor then controls.hover_anchor:SetHidden(true) end
+  if controls.card and controls.card.root then controls.card.root:SetHidden(true) end
+end
+
+-- Build the cursor-following hover card once (parented to the window so it draws
+-- above the canvas/bars). A textured bg + brand-blue accent bar, a colour swatch,
+-- the group name (in its colour) and a stat line.
+local function build_hover_card()
+  local WM   = WINDOW_MANAGER
+  local root = WM:CreateControl("VerditerHoverCard", controls.window, zc.CT_CONTROL)
+  root:SetDimensions(CARD_W, CARD_H)
+  root:SetMouseEnabled(false)
+  root:SetDrawLevel(20)
+  root:SetHidden(true)
+
+  local bg = WM:CreateControl("VerditerHoverCardBg", root, CT_TEXTURE)
+  bg:SetTexture(FILL_TEXTURE)
+  bg:SetTextureCoords(0, 1, 0, 0.05)
+  bg:SetAnchor(TOPLEFT,     root, TOPLEFT,     0, 0)
+  bg:SetAnchor(BOTTOMRIGHT, root, BOTTOMRIGHT, 0, 0)
+  bg:SetColor(C_CARD_BG.r, C_CARD_BG.g, C_CARD_BG.b, C_CARD_BG.a)
+
+  local accent = WM:CreateControl("VerditerHoverCardAccent", root, CT_TEXTURE)
+  accent:SetTexture(FILL_TEXTURE)
+  accent:SetTextureCoords(0, 0.05, 0, 1)
+  accent:SetAnchor(TOPLEFT,    root, TOPLEFT,    0, 0)
+  accent:SetAnchor(BOTTOMLEFT, root, BOTTOMLEFT, 0, 0)
+  accent:SetWidth(3)
+  accent:SetColor(C_CARD_ACCENT.r, C_CARD_ACCENT.g, C_CARD_ACCENT.b, 1.0)
+
+  local swatch = WM:CreateControl("VerditerHoverCardSwatch", root, CT_TEXTURE)
+  swatch:SetTexture(FILL_TEXTURE)
+  swatch:SetTextureCoords(0, 1, 0, 0.05)
+  swatch:SetDimensions(10, 10)
+  swatch:SetAnchor(TOPLEFT, root, TOPLEFT, 12, 9)
+
+  local name = WM:CreateControl("VerditerHoverCardName", root, CT_LABEL)
+  name:SetFont("ZoFontGameBold")
+  name:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+  name:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+  name:SetAnchor(TOPLEFT, root, TOPLEFT, 28, 6)
+  name:SetDimensions(CARD_W - 36, 16)
+
+  local stat = WM:CreateControl("VerditerHoverCardStat", root, CT_LABEL)
+  stat:SetFont("ZoFontGameSmall")
+  stat:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+  stat:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+  stat:SetColor(C_CARD_STAT.r, C_CARD_STAT.g, C_CARD_STAT.b, 1.0)
+  stat:SetAnchor(TOPLEFT, root, TOPLEFT, 12, 24)
+  stat:SetDimensions(CARD_W - 20, 14)
+
+  controls.card = { root = root, swatch = swatch, name = name, stat = stat }
+end
+
+-- Fill the card from a hovered band and pin it near the cursor (clamped on-screen).
+local function show_card(band, mx, my)
+  local card = controls.card
+  if not card then return end
+  card.swatch:SetColor(band.r, band.g, band.b, 1.0)
+  card.name:SetColor(band.r, band.g, band.b, 1.0)
+  card.name:SetText(hover_label(band))
+  local pct = math_floor((band.share or 0) * 100 + 0.5)
+  local val = (band.share or 0) * (band.dtps or 0)   -- this group's DTPS at the instant
+  card.stat:SetText(string_format("%s DTPS  ·  %d%%", fmt_readout(val), pct))
+
+  local sw, sh = GuiRoot:GetDimensions()
+  local x = mx + 16
+  local y = my + 18
+  if x + CARD_W > sw - 4 then x = mx - CARD_W - 16 end
+  if x < 4 then x = 4 end
+  if y + CARD_H > sh - 4 then y = my - CARD_H - 18 end
+  if y < 4 then y = 4 end
+  card.root:ClearAnchors()
+  card.root:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, x, y)
+  card.root:SetHidden(false)
 end
 
 -- Map a cursor position (canvas-relative x, height above canvas bottom) to the
@@ -584,21 +655,7 @@ local function hover_poll()
   local new = band and band.key or nil
   if new ~= hover_key then hover_key = new; render_current_view() end
 
-  if band then
-    local a = controls.hover_anchor
-    a:ClearAnchors()
-    a:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, mx + 14, my + 16)
-    a:SetHidden(false)
-    local text = string_format("|c%s%s|r  —  %d%%",
-      hexcol(band.r, band.g, band.b), hover_label(band),
-      math_floor((band.share or 0) * 100 + 0.5))
-    if text ~= hover_text then
-      hover_text = text
-      ZO_Tooltips_ShowTextTooltip(a, TOPLEFT, text)
-    end
-  else
-    hide_hover_ui()
-  end
+  if band then show_card(band, mx, my) else hide_hover_ui() end
 end
 
 -- Toggle the hit layer with the gate; clear any stale highlight/tooltip when off.
@@ -694,6 +751,7 @@ local function render_stacked(groups_field, key_field)
         band.lo    = TIME_STRIP_H + y_off
         band.hi    = TIME_STRIP_H + y_off + seg_h
         band.share = grp.share
+        band.dtps  = s.DTPS        -- column total → group value = share * dtps
         band.name  = grp.name      -- nil for TYPE; raw attacker name for SOURCE
         band.r = grp.r; band.g = grp.g; band.b = grp.b
         col.nb = nb
@@ -1161,10 +1219,7 @@ function M.init()
     if hover_key ~= nil then hover_key = nil; render_current_view() end
   end)
 
-  controls.hover_anchor = WINDOW_MANAGER:CreateControl("VerditerGraphHoverAnchor", GuiRoot, zc.CT_CONTROL)
-  controls.hover_anchor:SetDimensions(1, 1)
-  controls.hover_anchor:SetMouseEnabled(false)
-  controls.hover_anchor:SetHidden(true)
+  build_hover_card()
 
   controls.pool_type_seg  = make_fill_pool("VerditerTypeSeg")
   controls.pool_type_line = make_line_pool("VerditerTypeLine")
