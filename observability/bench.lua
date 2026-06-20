@@ -53,12 +53,11 @@ local TYPE_BUCKETS   = 8     -- max damage-type groups per sample
 local SOURCE_BUCKETS = 8     -- max attacker groups per sample (top-7 + Other)
 local REPS           = 20    -- render repetitions per view for stable percentiles
 
--- Safety: the bench renders synchronously. Above ~3000 samples the stacked render
--- (samples × 8 groups) blocks the main thread long enough to miss the server
--- heartbeat → disconnect (303). Measured empirically: 1500 survived (~128ms),
--- ~5-6k disconnected. Abort above this unless the caller passes `force`. The
--- low→mid curve already gives the linear scaling law; extrapolate the extreme.
-local SAFETY_MAX_DRAWN = 24000   -- ≈ 3000 samples × 8 groups
+-- Safety: PRE-decimation the synchronous render drew samples × groups controls, so
+-- ~3000 samples disconnected (303). POST-decimation the DRAW is capped to pixel
+-- columns, so the only O(n) cost left is the fold + fill (cheap) — the old disconnect
+-- regime is now safe to bench. Gate only against an absurd buffer (fold/fill cost).
+local SAFETY_MAX_SAMPLES = 20000   -- well above any real config (10Hz×10min = 6000)
 
 -- worst-case group scratch, built ONCE and reused (push copies out of it, so the
 -- same shape on every sample = max stacked-segment count = heaviest render).
@@ -143,9 +142,15 @@ end
 -- did not. This isolates it decisively: warm the pools fully, double-collect, then
 -- render N times measuring the heap delta. ~0 ⇒ the Phase-A number was measurement
 -- noise; nonzero ⇒ a genuine per-render alloc to hunt down. Pool growth is excluded
--- (the 64-iter warm fills the pool before the baseline), so anything left is real.
+-- (the warm renders fill the pool before the baseline), so anything left is real.
+-- N must stay SMALL: a render is ~1000× heavier than the gcprobe's data-path op, so
+-- the original N=1000 blocked the main thread long enough to disconnect (303).
+local ALLOC_PROBE_N    = 20
+local ALLOC_PROBE_WARM = 4
+
 function M.alloc_probe(n)
-  n = n or 1000
+  n = n or ALLOC_PROBE_N
+  if n > 30 then n = 30 elseif n < 5 then n = 5 end   -- hard clamp: renders are expensive
   local TB    = Verditer.TemporalBuffer
   local Graph = Verditer.Graph
   if TB.is_recording() then d("[allocprobe] press Stop first."); return end
@@ -154,8 +159,8 @@ function M.alloc_probe(n)
   if (cw or 0) <= 4 then d("[allocprobe] canvas not laid out; make the graph visible, then re-run."); return end
 
   local cap = TB.capacity()
-  if cap * TYPE_BUCKETS > SAFETY_MAX_DRAWN then
-    d(string_format("[allocprobe] capacity=%d risks a disconnect; lower the sliders (cap <= ~3000).", cap))
+  if cap > SAFETY_MAX_SAMPLES then
+    d(string_format("[allocprobe] capacity=%d absurdly large for N renders; lower the sliders.", cap))
     return
   end
 
@@ -167,7 +172,7 @@ function M.alloc_probe(n)
   L(string_format("=== Verditer allocprobe  N=%d  cap=%d  (double-collect, pools pre-warmed) ===", n, filled))
   for v = vmin, vmax do
     Graph.bench_set_view(v)
-    for _ = 1, 64 do Graph.bench_render_once() end        -- warm pools + hit index fully
+    for _ = 1, ALLOC_PROBE_WARM do Graph.bench_render_once() end   -- warm pools + hit index
     for _ = 1, 2 do collectgarbage("collect") end
     local before = collectgarbage("count")
     for _ = 1, n do Graph.bench_render_once() end
@@ -202,13 +207,11 @@ function M.run(label, force)
     return
   end
 
-  -- safety gate: a too-large synchronous render can disconnect you (303).
-  local cap       = TB.capacity()
-  local projected = cap * TYPE_BUCKETS
-  if projected > SAFETY_MAX_DRAWN and not force then
-    d(string_format("[bench] ABORT: capacity=%d would draw ~%d controls (stacked) — risks a client freeze/disconnect (303).",
-                    cap, projected))
-    d(string_format("[bench] use the low->mid curve to extrapolate the extreme, or override: /verditer bench %s force", label))
+  -- safety gate: post-decimation the draw is capped, so only guard against an absurd
+  -- buffer (the O(n) fold/fill). Real configs (≤6000) are fine; override with `force`.
+  local cap = TB.capacity()
+  if cap > SAFETY_MAX_SAMPLES and not force then
+    d(string_format("[bench] ABORT: capacity=%d is absurdly large (fold/fill cost). Override: /verditer bench %s force", cap, label))
     return
   end
 

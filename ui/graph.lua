@@ -98,7 +98,7 @@ local prev_hp = -1   -- previous sample's hp_pct, for the fresh-loss (red) band
 -- builds a hit index as it draws (per-column x-range + each group's y-band); the
 -- poll then maps the cursor to a band by pure lookup. nil hover_key = no highlight.
 local hover_key  = nil
-local hit = { cols = {}, n = 0, slot_w = 0, offset = 0 }
+local hit = { cols = {}, n = 0 }
 local C_DIM_BIAS = 0.05   -- dim = darken+desaturate toward this, at low alpha
 local render_current_view   -- forward decl (hover helpers call it before it's defined)
 
@@ -361,22 +361,67 @@ local function release_all_pools()
   controls.pool_line_down:ReleaseAllObjects()
 end
 
-local function slot_geometry(cw)
-  local capacity = Verditer.TemporalBuffer.capacity()
-  local n        = Verditer.TemporalBuffer.count()
-  local slot_w   = cw / capacity                 -- float; gates polyline density
-  local bar_gap  = (slot_w > 3) and 1 or 0
+-- ── Decimation (BACKLOG E; M4-style, specialized to bars) ─────────────────────
+-- Render cost WAS O(samples): drawing samples × groups controls, which at high
+-- sample-rate × long window blows past the canvas pixel count → multi-second freezes
+-- and server disconnects (APOD Assess, tests/APOD/). Fix: never draw more columns
+-- than the canvas has pixels. Bucket the buffer's LOGICAL slots into num_cols pixel
+-- columns and fold each with a SPIKE-PRESERVING reducer: MAX(DTPS/ABS/hp_drop),
+-- MIN(hp), and the groups OF THE PEAK-DTPS sample (so the stacked composition matches
+-- the spike height). For bottom-anchored bars this is M4 pixel-perfect (a bar 0→max
+-- covers every sample below it). Right-aligned: logical slot p∈[0,capacity) maps to
+-- column floor(p*num_cols/capacity), so a partial recording fills from the right just
+-- as before. Output reuses dec_cols (zero-alloc); group refs are shared, never copied.
+local MIN_COL_PX = 2
+local dec_cols   = {}    -- reused folded-column scratch (sample-shaped)
+
+local function decimate(cw)
+  local TB       = Verditer.TemporalBuffer
+  local capacity = TB.capacity()
+  local n        = TB.count()
+  local num_cols = math_floor(cw / MIN_COL_PX)
+  if num_cols < 1 then num_cols = 1 end
+  if num_cols > capacity then num_cols = capacity end
   local offset   = capacity - n
-  return slot_w, bar_gap, offset
+  local m, cur_c = 0, -1
+  local col
+  TB.iterate(function(i, s)
+    local c = math_floor((offset + i - 1) * num_cols / capacity)
+    if c ~= cur_c then
+      m = m + 1
+      col = dec_cols[m]
+      if not col then col = {}; dec_cols[m] = col end
+      col.c = c
+      col.DTPS = s.DTPS; col.ABS = s.ABS
+      col.hp_pct = s.hp_pct; col.hp_drop = s.hp_drop
+      col.t = s.t
+      col.type_groups = s.type_groups
+      col.source_groups = s.source_groups
+      cur_c = c
+    else
+      if s.DTPS > col.DTPS then             -- peak height + matching group composition
+        col.DTPS = s.DTPS
+        col.type_groups = s.type_groups
+        col.source_groups = s.source_groups
+      end
+      if s.ABS > col.ABS then col.ABS = s.ABS end
+      if s.hp_pct >= 0 and (col.hp_pct < 0 or s.hp_pct < col.hp_pct) then col.hp_pct = s.hp_pct end
+      if s.hp_drop > col.hp_drop then col.hp_drop = s.hp_drop end
+      col.t = s.t                            -- column time = its last sample
+    end
+  end)
+  local col_w   = cw / num_cols
+  local bar_gap = (col_w > 3) and 1 or 0
+  return m, num_cols, col_w, bar_gap
 end
 
--- Pixel-snapped bar rect (BACKLOG L): integer left + width via cumulative
--- rounding, so bars tile the pixel grid exactly and never beat into the
--- "thicker bar every N" moiré that float positions/widths produce.
-local function slot_rect(offset, i, slot_w, bar_gap)
-  local left  = math_floor((offset + i - 1) * slot_w + 0.5)
-  local right = math_floor((offset + i)     * slot_w + 0.5)
-  return left, math_max(1, right - left - bar_gap)
+-- Pixel-snapped column rect (also kills the BACKLOG L moiré): integer left/right via
+-- cumulative rounding so columns tile the pixel grid exactly. Caller derives the drawn
+-- width (right-left-gap) and the hover hit-span (full right-left) from this.
+local function dec_rect(c, num_cols, cw)
+  local left  = math_floor(c       * cw / num_cols + 0.5)
+  local right = math_floor((c + 1) * cw / num_cols + 0.5)
+  return left, right
 end
 
 -- extents over the window
@@ -701,11 +746,15 @@ end
 -- during the last render. Returns band (may be nil if above the stack) + the column
 -- (for the crosshair + time even when the cursor is above the bars).
 local function hover_pick(rel_x, height_above)
-  if hit.n == 0 or hit.slot_w <= 0 then return nil, nil end
-  local i = math_floor(rel_x / hit.slot_w) - hit.offset + 1
-  if i < 1 or i > hit.n then return nil, nil end
-  local col = hit.cols[i]
-  if not col or rel_x < col.x0 or rel_x > col.x1 then return nil, nil end
+  if hit.n == 0 then return nil, nil end
+  -- Columns are decimated (non-uniform in slot space) but sorted left→right, so we
+  -- scan for the one whose x-range holds the cursor. ≤ num_cols, frozen-session only.
+  local col = nil
+  for i = 1, hit.n do
+    local c = hit.cols[i]
+    if c and rel_x >= c.x0 and rel_x <= c.x1 then col = c; break end
+  end
+  if not col then return nil, nil end
   local band = nil
   for b = 1, col.nb do
     local bd = col.bands[b]
@@ -788,8 +837,8 @@ end
 -- geometry; hit_col records a column's x-range, time and raw values. Stacked views
 -- additionally push y-bands per group (see render_stacked); OUTCOME/SURVIVAL leave
 -- nb = 0 and the poll reads the column values directly for the moment card.
-local function hit_begin(slot_w, offset, n)
-  hit.n = n; hit.slot_w = slot_w; hit.offset = offset
+local function hit_begin(n)
+  hit.n = n
 end
 
 local function hit_col(i, x, bw, s)
@@ -827,22 +876,25 @@ local function render_stacked(groups_field, key_field)
   if max_dtps <= 0 then hide_grid(controls.grid) return end
   draw_grid(controls.grid, canvas, max_dtps, span_ms)
 
-  local slot_w, bar_gap, offset = slot_geometry(cw)
+  local m, num_cols, col_w, bar_gap = decimate(cw)
   local xs, top_hs = rt_xs, rt_top_hs
 
   -- hit index is only needed (and only valid) on a frozen session; skip the extra
   -- bookkeeping entirely while recording so the hot path stays untouched.
   local capture = not Verditer.TemporalBuffer.is_recording()
   local hk = hover_key   -- nil = no highlight; else dim every group but this key
-  if capture then hit_begin(slot_w, offset, n) end
+  if capture then hit_begin(m) end
 
-  Verditer.TemporalBuffer.iterate(function(i, s)
-    local x, bw = slot_rect(offset, i, slot_w, bar_gap)
+  for i = 1, m do
+    local s = dec_cols[i]
+    local left, right = dec_rect(s.c, num_cols, cw)
+    local x   = left
+    local bw  = math_max(1, right - left - bar_gap)
     local col_h = math_max(0, math_floor(ch_plot * (s.DTPS / max_dtps) + 0.5))
     xs[i]     = x + bw * 0.5
     top_hs[i] = col_h
 
-    local col = capture and hit_col(i, x, bw, s) or nil
+    local col = capture and hit_col(i, left, right - left, s) or nil   -- full width = continuous hover
 
     local y_off  = 0
     local groups = s[groups_field]
@@ -878,10 +930,10 @@ local function render_stacked(groups_field, key_field)
 
       y_off = y_off + seg_h
     end
-  end)
+  end
 
-  if slot_w >= 3 then
-    for i = 2, n do
+  if col_w >= 3 then
+    for i = 2, m do
       local lt = controls.pool_type_line:AcquireObject()
       lt:ClearAnchors()
       lt:SetAnchor(BOTTOMLEFT,  canvas, BOTTOMLEFT, xs[i-1], -(top_hs[i-1] + TIME_STRIP_H))
@@ -938,15 +990,18 @@ local function render_outcome()
   local up_scale   = (max_dtps > 0) and (half / max_dtps) or 0
   local down_scale = (max_abs  > 0) and (half / max_abs)  or 0
 
-  local slot_w, bar_gap, offset = slot_geometry(cw)
+  local m, num_cols, col_w, bar_gap = decimate(cw)
   local xs, up_hs, down_ys = ro_xs, ro_up_hs, ro_down_ys
 
   local capture = not Verditer.TemporalBuffer.is_recording()
-  if capture then hit_begin(slot_w, offset, n) end
+  if capture then hit_begin(m) end
 
-  Verditer.TemporalBuffer.iterate(function(i, s)
-    local x, bw   = slot_rect(offset, i, slot_w, bar_gap)
-    if capture then hit_col(i, x, bw, s) end
+  for i = 1, m do
+    local s = dec_cols[i]
+    local left, right = dec_rect(s.c, num_cols, cw)
+    local x  = left
+    local bw = math_max(1, right - left - bar_gap)
+    if capture then hit_col(i, left, right - left, s) end
     local up_h    = math_min(half, math_max(0, math_floor(s.DTPS * up_scale   + 0.5)))
     local down_h  = math_min(half, math_max(0, math_floor(s.ABS  * down_scale + 0.5)))
     xs[i]      = x + bw * 0.5
@@ -972,10 +1027,10 @@ local function render_outcome()
       td:SetColor(C_ABS.r, C_ABS.g, C_ABS.b, C_ABS.a)
       td:SetHidden(false)
     end
-  end)
+  end
 
-  if slot_w >= 3 then
-    for i = 2, n do
+  if col_w >= 3 then
+    for i = 2, m do
       local lu = controls.pool_line_up:AcquireObject()
       lu:ClearAnchors()
       lu:SetAnchor(BOTTOMLEFT,  canvas, BOTTOMLEFT, xs[i-1], -(baseline_y + up_hs[i-1]))
@@ -1036,14 +1091,17 @@ local function render_survival_bars()
   g.ylabels[1]:SetHidden(false)
   draw_time_strip(g, canvas, span_ms)
 
-  local slot_w, bar_gap, offset = slot_geometry(cw)
+  local m, num_cols, _, bar_gap = decimate(cw)
 
   local capture = not Verditer.TemporalBuffer.is_recording()
-  if capture then hit_begin(slot_w, offset, n) end
+  if capture then hit_begin(m) end
 
-  Verditer.TemporalBuffer.iterate(function(i, s)
-    local x, bw = slot_rect(offset, i, slot_w, bar_gap)
-    if capture then hit_col(i, x, bw, s) end
+  for i = 1, m do
+    local s = dec_cols[i]
+    local left, right = dec_rect(s.c, num_cols, cw)
+    local x  = left
+    local bw = math_max(1, right - left - bar_gap)
+    if capture then hit_col(i, left, right - left, s) end
     local hp = s.hp_pct
     if hp < 0 then hp = 1 elseif hp > 1 then hp = 1 end
     local drop = s.hp_drop or 0
@@ -1073,7 +1131,7 @@ local function render_survival_bars()
       t:SetWidth(bw); t:SetHeight(grey_h)
       t:SetColor(C_HP_LOST.r, C_HP_LOST.g, C_HP_LOST.b, C_HP_LOST.a); t:SetHidden(false)
     end
-  end)
+  end
 end
 
 function render_current_view()
