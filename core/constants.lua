@@ -78,5 +78,10 @@ Verditer.Constants = {
     ["pipeline.combat_event.processing"]  = 3.0,
     ["pipeline.render_tick"]              = 10.0,
     ["graph.sample_tick"]                 = 15.0,
+    -- per-view render zones (compute lens; the decimation cliff lives here)
+    ["render.OUTCOME"]                    = 12.0,
+    ["render.TYPE"]                       = 12.0,
+    ["render.SURVIVAL"]                   = 12.0,
+    ["render.SOURCE"]                     = 12.0,
   },
 }

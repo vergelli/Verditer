@@ -40,6 +40,7 @@ core/damage_type_colors.lua
 core/source_palette.lua
 core/metrics.lua
 observability/diagnostics.lua
+observability/bench.lua
 pipeline/acquisition.lua
 pipeline/filter.lua
 pipeline/processing.lua

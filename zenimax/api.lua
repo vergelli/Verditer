@@ -42,3 +42,7 @@ M.GetAbilityName          = GetAbilityName
 M.GetAbilityIcon          = GetAbilityIcon
 
 M.GetUIMousePosition = GetUIMousePosition
+
+-- Perf observability (DEBUG bench/ledger). Frame rate is the user-visible symptom
+-- the compute/graphics lenses ultimately answer to.
+M.GetFramerate = GetFramerate

@@ -21,10 +21,13 @@ if not Verditer.Constants.DEBUG then return end
 --! "You shall not pass!!!"
 
 local GetGameTimeMilliseconds = Verditer.zenimax.api.GetGameTimeMilliseconds
+local GetFramerate = Verditer.zenimax.api.GetFramerate
+local collectgarbage = collectgarbage
 local d           = d
 local pairs       = pairs
 local tostring    = tostring
 local math_min    = math.min
+local math_max    = math.max
 local table_sort  = table.sort
 
 -- ── config
@@ -41,6 +44,15 @@ local ts_buf      = {}
 local ts_head     = 0
 local ts_count    = 0
 local start_time  = 0
+
+-- perf lenses sampled on the 1s diag tick (graphics: fps; memory: heap watermark).
+-- These are the live-window counterparts to the synthetic /verditer bench: fps is
+-- the user-visible symptom, heap_kb the net retention since reset (leak tripwire).
+local fps_min     = 0
+local fps_sum     = 0
+local fps_count   = 0
+local gc_base_kb  = 0     -- heap at last reset
+local gc_peak_kb  = 0     -- max heap seen in the window
 
 -- ── counters
 function M.bump(key, n)
@@ -78,6 +90,19 @@ local function ts_sample()
   ts_head = (ts_head % TS_CAP) + 1
   ts_buf[ts_head] = snap
   ts_count = ts_count + 1
+
+  -- graphics lens: fps min/avg over the window
+  if GetFramerate then
+    local fps = GetFramerate() or 0
+    if fps > 0 then
+      if fps_count == 0 or fps < fps_min then fps_min = fps end
+      fps_sum   = fps_sum + fps
+      fps_count = fps_count + 1
+    end
+  end
+  -- memory lens: heap watermark (KB). Net retention is gc_now - gc_base.
+  local heap = collectgarbage("count")
+  if heap > gc_peak_kb then gc_peak_kb = heap end
 end
 
 function M.snapshot()
@@ -126,6 +151,12 @@ local function build_diag_lines()
   local lines = {}
   lines[#lines+1] = "[diag] uptime=" .. (GetGameTimeMilliseconds() - start_time)
                     .. "ms  ev_total=" .. ev_count .. "  ts_samples=" .. ts_count
+
+  -- perf lenses (live window): fps (graphics) + heap (memory)
+  local fps_avg = (fps_count > 0) and (fps_sum / fps_count) or 0
+  local heap_now = collectgarbage("count")
+  lines[#lines+1] = string.format("[perf] fps min=%.1f avg=%.1f (n=%d)  |  heap now=%.0fKB peak=%.0fKB netΔ=%.0fKB (since reset)",
+                    fps_min, fps_avg, fps_count, heap_now, gc_peak_kb, heap_now - gc_base_kb)
   lines[#lines+1] = "[diag] counters:"
   local keys = {}
   for k in pairs(counters) do keys[#keys+1] = k end
@@ -232,12 +263,19 @@ function M.reset()
   ts_buf   = {}
   ts_head  = 0
   ts_count = 0
+  fps_min   = 0
+  fps_sum   = 0
+  fps_count = 0
+  gc_base_kb = collectgarbage("count")
+  gc_peak_kb = gc_base_kb
   start_time = GetGameTimeMilliseconds()
 end
 
 -- ── init
 function M.init()
   start_time = GetGameTimeMilliseconds()
+  gc_base_kb = collectgarbage("count")
+  gc_peak_kb = gc_base_kb
   Verditer.zenimax.events.register_update("Verditer_DiagTick", TICK_MS, ts_sample)
 end
 

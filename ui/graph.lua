@@ -81,6 +81,14 @@ local VIEW_MIN, VIEW_MAX  = VIEW_OUTCOME, VIEW_BY_SOURCE
 local VIEW_LABELS         = { "OUTCOME", "TYPE", "SURVIVAL", "SOURCE" }
 local current_view        = VIEW_OUTCOME
 
+-- Compute-lens instrumentation: each view gets its own profiler zone so the ledger
+-- can attribute render cost per view (the decimation cliff lives here). The zone
+-- names are pre-built (no per-render string concat) and prof_enter/exit are NOOP
+-- when DEBUG=false, so the live render pays only a table lookup + two NOOP calls.
+local prof_enter   = Verditer.Profiler.enter
+local prof_exit    = Verditer.Profiler.exit
+local RENDER_ZONE  = { "render.OUTCOME", "render.TYPE", "render.SURVIVAL", "render.SOURCE" }
+
 local prev_hp = -1   -- previous sample's hp_pct, for the fresh-loss (red) band
 
 -- ── Hover (Datadog-style, BACKLOG D) ──────────────────────────────────────────
@@ -1069,6 +1077,7 @@ local function render_survival_bars()
 end
 
 function render_current_view()
+  prof_enter(RENDER_ZONE[current_view])
   if current_view ~= VIEW_BY_SOURCE then hide_legend() end
   if current_view == VIEW_OUTCOME then
     render_outcome()
@@ -1079,6 +1088,7 @@ function render_current_view()
   else
     render_survival_bars()
   end
+  prof_exit(RENDER_ZONE[current_view])
 end
 
 local function refresh_button_colors()
@@ -1113,9 +1123,6 @@ local function set_view(v)
   update_hover_gate()
 end
 
-local prof_enter = Verditer.Profiler.enter
-local prof_exit  = Verditer.Profiler.exit
-
 local sample_type_scratch   = { count = 0 }
 local sample_source_scratch = { count = 0 }
 
@@ -1144,6 +1151,33 @@ local function on_sample_update()
 end
 
 function M.current_view() return current_view end
+
+-- ── DEBUG bench hooks (perf ledger) ───────────────────────────────────────────
+-- Expose the render path + pool occupancy so observability/bench.lua can measure
+-- compute (per-view zones), graphics (drawn controls), and memory (alloc delta)
+-- deterministically. Only ever called from the DEBUG-gated /verditer bench; no
+-- effect on the live path. The bench fills the buffer (not recording) first, so
+-- these render the FROZEN path (hit-index capture on) — the heaviest, worst case.
+function M.bench_set_view(v) set_view(v) end
+function M.bench_render_once() render_current_view() end
+function M.bench_drawn()
+  local c = controls
+  return c.pool_type_seg:GetActiveObjectCount()
+       + c.pool_type_line:GetActiveObjectCount()
+       + c.pool_up:GetActiveObjectCount()
+       + c.pool_down:GetActiveObjectCount()
+       + c.pool_line_up:GetActiveObjectCount()
+       + c.pool_line_down:GetActiveObjectCount()
+end
+function M.bench_canvas()
+  local cv = controls.canvas
+  return cv:GetWidth(), cv:GetHeight()
+end
+function M.bench_views() return VIEW_LABELS, VIEW_MIN, VIEW_MAX end
+function M.bench_ensure_open()
+  if controls.window and controls.window:IsHidden() then M.toggle() end
+  return controls.window ~= nil and not controls.window:IsHidden()
+end
 
 function M.on_record_click()
   if Verditer.TemporalBuffer.is_recording() then return end

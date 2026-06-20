@@ -38,6 +38,19 @@ local function on_slash(input)
     elseif cmd == "gcprobe" then
       local n = tonumber(string_match(input, "^%s*%S+%s+(%d+)")) or 1000
       Verditer.Diagnostics.gc_probe(n) ; return
+    elseif cmd == "bench" then
+      -- /verditer bench <label> — render ledger (compute/graphics/memory) to CopyBox.
+      -- label is kept case-sensitive (raw input) so "baseline"/"post-vulkan" diff cleanly.
+      local label = string_match(input, "^%s*%S+%s+(%S+)") or "run"
+      Verditer.Bench.run(label) ; return
+    elseif cmd == "stress" then
+      -- /verditer stress fill [n]   → fabricate worst-case samples (render path)
+      -- /verditer stress events [n] → inject events through the pipeline (hot path)
+      local sub = string_match(string_lower(input), "^%s*%S+%s+(%S+)") or ""
+      local arg = tonumber(string_match(input, "^%s*%S+%s+%S+%s+(%d+)"))
+      if sub == "events" then Verditer.Bench.stress_events(arg)
+      else Verditer.Bench.stress_fill(arg) end
+      return
     elseif cmd == "prof" then
       local sub = string_match(string_lower(input), "^%s*%S+%s+(%S+)") or ""
       if sub == "reset" then Verditer.Profiler.reset(); d("[prof] reset")
