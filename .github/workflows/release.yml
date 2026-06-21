@@ -1,0 +1,171 @@
+name: Release
+
+# Builds an ESOUI-ready zip and creates a GitHub Release.
+#
+# Triggered when a tag matching `v*` is pushed (e.g. v0.9.0), or manually via
+# the Actions tab. Output: Verditer-<version>.zip attached to the GitHub
+# Release page. ESOUI upload stays manual — there is no public API for it.
+#
+# The zip is built with an ALLOWLIST: only the files the game actually loads
+# go in (manifest-listed .lua/.xml PLUS the assets/ textures referenced by
+# XML). docs/, specs/, test/, .git, .github, README, LICENSE stay in the repo
+# so the user's AddOns/ folder stays clean.
+#
+# Hardening: assets/ is NOT in the manifest's file list but IS referenced by
+# XML (Verditer/assets/glow.dds, logo.dds) — forgetting it ships a broken
+# glow/logo. The "Verify staged textures" step fails the build if a referenced
+# .dds is missing.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to package (without v prefix, e.g. 0.9.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # required to create the GitHub Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Lint manifest (ESOUI §0 hard rules)
+        # UTF-8 without BOM, every line <= 301 bytes, APIVersion has 1-2 values.
+        run: |
+          MANIFEST=Verditer.txt
+          if [ "$(head -c3 "$MANIFEST" | od -An -tx1 | tr -d ' ')" = "efbbbf" ]; then
+            echo "::error::$MANIFEST has a UTF-8 BOM — must be UTF-8 without BOM"
+            exit 1
+          fi
+          LC_ALL=C awk '{ if (length($0) > 301) { printf "::error::%s line %d is %d bytes (>301)\n", FILENAME, NR, length($0); bad=1 } } END { exit bad }' "$MANIFEST"
+          APICOUNT=$(grep -E '^## APIVersion:' "$MANIFEST" | sed -E 's/^## APIVersion:[[:space:]]*//' | wc -w)
+          if [ "$APICOUNT" -lt 1 ]; then echo "::error::APIVersion directive missing or empty"; exit 1; fi
+          if [ "$APICOUNT" -gt 2 ]; then echo "::error::APIVersion has $APICOUNT values — max 2 (3+ are ignored by the parser)"; exit 1; fi
+          echo "Manifest lint passed (no BOM, lines <=301, APIVersion=$APICOUNT value(s))."
+
+      - name: Verify manifest version matches tag
+        run: |
+          M=$(grep -E '^## Version:' Verditer.txt | sed -E 's/## Version:[[:space:]]*//')
+          if [ "$M" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Verditer.txt Version ($M) does not match tag (${{ steps.version.outputs.version }})"
+            exit 1
+          fi
+
+      - name: Verify constants.lua VERSION matches tag
+        run: |
+          C=$(grep -E '^\s*VERSION\s*=' core/constants.lua | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ "$C" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::core/constants.lua VERSION ($C) does not match tag (${{ steps.version.outputs.version }})"
+            exit 1
+          fi
+
+      - name: Stage release files
+        # ALLOWLIST. Manifest-loaded code PLUS assets/ (textures referenced by
+        # XML but not in the manifest file list). If you add a new top-level
+        # folder that the game loads or references, add it here.
+        run: |
+          mkdir -p staging/Verditer
+          cp -r \
+            assets \
+            bindings.xml \
+            locales \
+            core \
+            lib \
+            zenimax \
+            observability \
+            pipeline \
+            ui \
+            Verditer.lua \
+            Verditer.txt \
+            staging/Verditer/
+
+      - name: Verify staged textures
+        # Fail loudly if ANY texture referenced as "Verditer/assets/...dds" in
+        # the XML is missing from staging (the bug that once shipped a broken glow).
+        run: |
+          missing=0
+          refs=$(grep -rhoE 'Verditer/assets/[A-Za-z0-9_./-]+\.dds' ui/ | sort -u)
+          if [ -z "$refs" ]; then echo "::warning::no Verditer/assets textures referenced in ui/ XML"; fi
+          for ref in $refs; do
+            rel="${ref#Verditer/}"
+            if [ -f "staging/Verditer/$rel" ]; then
+              echo "ok: $rel"
+            else
+              echo "::error::texture referenced in XML is missing from the zip: $rel"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+
+      - name: Verify folder casing
+        # ESOUI moderation flags zips whose top-level folder name does not match
+        # the manifest filename exactly
+        run: |
+          if [ ! -d "staging/Verditer" ]; then
+            echo "::error::Top-level folder must be exactly 'Verditer'"
+            exit 1
+          fi
+
+      - name: Build zip
+        run: |
+          cd staging
+          zip -r "../Verditer-${{ steps.version.outputs.version }}.zip" Verditer/
+          cd ..
+          echo "----- zip contents -----"
+          unzip -l "Verditer-${{ steps.version.outputs.version }}.zip"
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$VERSION" '
+              $0 ~ "^## \\[" v "\\]" { capture=1; next }
+              capture && /^## \[/    { exit }
+              capture                { print }
+            ' CHANGELOG.md > release_notes.md
+          fi
+          if [ ! -s release_notes.md ]; then
+            echo "No CHANGELOG section for [$VERSION]; using default notes."
+            echo "Verditer $VERSION" > release_notes.md
+          fi
+          echo "----- release notes preview -----"
+          cat release_notes.md
+          echo "---------------------------------"
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Verditer ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          files: Verditer-${{ steps.version.outputs.version }}.zip
+          draft: false
+          prerelease: false
+
+      - name: Upload artifact (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Verditer-${{ steps.version.outputs.version }}
+          path: Verditer-${{ steps.version.outputs.version }}.zip
