@@ -1,5 +1,10 @@
 # Verditer
-
+![Version](https://img.shields.io/badge/version-0.8.0-blue)
+![Lua](https://img.shields.io/badge/Lua-5.1-2C2D72?logo=lua&logoColor=white)
+![ESO](https://img.shields.io/badge/ESO-Update%2049%20%C2%B7%20API%20101049-orange)
+![ESO](https://img.shields.io/badge/ESO-Update%2050%20%C2%B7%20API%20101050-orange)
+![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-green)
 ![Verditer](docs/assets/verditer-header-2.png)
 
 **Incoming-damage & survivability analytics for The Elder Scrolls Online.**
@@ -119,8 +124,8 @@ You can also bind a key under **Settings → Controls → Keybindings (Add-Ons)*
 
 | Addon | Tracks |
 |---|---|
-| **Verdant** | Healing & shielding output |
-| **Vermilion** | Outgoing damage |
+| **[Verdant](https://github.com/vergelli/verdant/tree/main)** | Healing & shielding output |
+| **[Vermilion](https://github.com/vergelli/Vermilion/tree/main)** | Outgoing damage |
 | **Verditer** | Incoming damage & survivability *(this one)* |
 
 ---
