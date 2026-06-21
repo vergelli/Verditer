@@ -26,11 +26,6 @@ local GuiRoot     = zc.GuiRoot
 local FILL_TEXTURE = "EsoUI/Art/UnitAttributeVisualizer/attributeBar_dynamic_fill.dds"
 local FILL_T, FILL_B = 0, 0.53125
 
--- Sample-rate cap = 5 Hz (was 10). Nyquist: combat is ~1s-scale and DTPS/ABS are
--- already windowed rates, so >5 Hz only adds redundant near-identical bars (APOD
--- analysis, tests/APOD/SAMPLING_RATE_QUESTION.md). With the 600s window max this caps
--- capacity at 3000 — trivial post-decimation. Old 10 Hz SavedVars clamp to 5 Hz via
--- nearest_idx on load.
 local SAMPLE_MAX_HZ  = 5
 local SAMPLE_PRESETS = {}
 local SAMPLE_LABELS  = {}
@@ -110,7 +105,7 @@ local function setup_slider_visuals(track, name_prefix)
   fill:SetAnchor(BOTTOMLEFT, track, BOTTOMLEFT, 0, 0)
   fill:SetTexture(FILL_TEXTURE)
   fill:SetTextureCoords(0, 1, FILL_T, FILL_B)
-  fill:SetColor(0.30, 0.50, 0.92, 0.90)   -- VERDITER blue
+  fill:SetColor(0.30, 0.50, 0.92, 0.90)
   fill:SetDrawLevel(1)
 
   local thumb = WM:CreateControl(name_prefix .. "Thumb", track, CT_TEXTURE)

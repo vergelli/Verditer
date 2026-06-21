@@ -3,49 +3,34 @@ local Verditer = Verditer
 
 Verditer.Constants = {
   ADDON_NAME    = "Verditer",
-  VERSION       = "0.1.0",
+  VERSION       = "0.9.0",
   SLASH_COMMAND = "/verditer",
 
-  DEBUG         = true,
+  DEBUG         = false,
 
   SV_TABLE   = "VerditerSavedVars",
   SV_VERSION = 1,
 
-  -- Acquisition probe (EXPLORATION §1). Focused on the incoming tuple: a single
-  -- TARGET=PLAYER subscription, unfiltered by result, dumping CSV via CopyBox.
   PROBE = {
-    ROW_LIMIT        = 6000,   -- ring of captured rows (bounded for the CopyBox cap)
+    ROW_LIMIT        = 6000,
     CHAT_INTERVAL_MS = 500,
   },
 
   TEMPORAL = {
     UPDATE_NAME          = "VerditerTemporalSample",
     SAMPLE_RATE_DEFAULT  = 1000,
-    TIME_WINDOW_DEFAULT  = 60,     -- (seconds)
+    TIME_WINDOW_DEFAULT  = 60,
   },
 
   METRICS = {
-    DAMAGE_WINDOW_MS = 5000,    -- DTPS rolling window
-    -- ABS MUST share the DTPS window. The OUTCOME view reads red (DTPS) and blue
-    -- (ABS) together at one instant; a wider ABS window made absorptions linger
-    -- (blue stayed "eating shield" up to 30 s after the shield broke, while red
-    -- already showed HP being eaten — Federico flagged this in-game). Matched
-    -- windows decay both sides together, so the timeline reads honestly.
+    DAMAGE_WINDOW_MS = 5000,
     SHIELD_WINDOW_MS = 5000,
   },
 
   POOL = {
-    -- Incoming volume can exceed Vermilion's outgoing worst case (a trial boss
-    -- AoE-ing the group). Revisit upward if engine.pool.exhausted trips (§15.5).
     EVENT_CAPACITY = 4096,
   },
 
-  -- GC pacing (APOD lever #3, addresses F6). The Assess found the real-world hitches
-  -- (30-135ms render spikes, min fps ~5) are Lua GC ATOMIC pauses landing inside render
-  -- frames (confirmed by negative heap-delta on budget breaches). Driving a little GC
-  -- every frame keeps the incremental collector ahead so it never needs a big atomic
-  -- pause — the documented real-time-games technique. Conservative + tunable; flip
-  -- PACING=false to A/B. STEP_KB = per-tick step size; INTERVAL_MS 0 = every frame.
   GC = {
     PACING      = true,
     STEP_KB     = 2,
@@ -53,32 +38,25 @@ Verditer.Constants = {
   },
 
   ABILITY_KIND = {
-    DMG_IN = 1,   -- reached HP   (DTPS)
-    ABS_IN = 2,   -- ate by shield (ABS)
+    DMG_IN = 1,
+    ABS_IN = 2,
   },
 
-  -- Death Recap (BACKLOG C). The server killing-attacks list is only readable a
-  -- short delay after EVENT_PLAYER_DEAD; ESO's own recap uses 2000 ms.
   RECAP = {
-    SERVER_DELAY_MS = 2000,   -- match ESO's DEATH_RECAP_DELAY before reading
-    LEAD_SECONDS    = 10,     -- seconds of lead-up "film" to freeze
-    LEAD_SAMPLE_MS  = 250,    -- always-on lead ring cadence (10s / 250ms = 40 frames)
-    MAX_DEATHS      = 25,     -- ring of session deaths for prev/next navigation
-                              -- (cleared on Flush, so bounded to one recording)
-    MAX_ATTACKS     = 6,      -- final-blows rows to show
+    SERVER_DELAY_MS = 2000,
+    LEAD_SECONDS    = 10,
+    LEAD_SAMPLE_MS  = 250,
+    MAX_DEATHS      = 25,
+    MAX_ATTACKS     = 6,
   },
 
-  -- Brand palette (HANDOFF §2). True blue, NOT the aquamarine namesake.
+
   BRAND = {
     BLUE      = { r = 0.18,  g = 0.42,  b = 0.88,  a = 1.0 },  -- #2E6BE0 primary
     BLUE_DEEP = { r = 0.12,  g = 0.28,  b = 0.66,  a = 1.0 },  -- #1E47A8 borders
     TINT      = { r = 0.043, g = 0.063, b = 0.125, a = 1.0 },  -- #0B1020 window bg
     ACCENT    = { r = 0.435, g = 0.659, b = 1.0,   a = 1.0 },  -- #6FA8FF lines
     DANGER    = { r = 0.90,  g = 0.30,  b = 0.25,  a = 1.0 },  -- #E64D40 HP stripe
-    -- Shared window chrome (Federico, 2026-06-20: the old border was too thin/dull).
-    -- ONE place for every window's border + chrome wash → tweak here, all windows
-    -- update in lockstep. EDGE = vivid electric-blue outer border (was a flat
-    -- 0.30/0.50/0.95); CHROME = the inner donut wash, punchier + a touch more opaque.
     EDGE      = { r = 0.22,  g = 0.54,  b = 1.0,   a = 1.0  },  -- vivid border
     CHROME    = { r = 0.32,  g = 0.56,  b = 1.0,   a = 0.88 },  -- inner chrome wash
   },
@@ -90,7 +68,6 @@ Verditer.Constants = {
     ["pipeline.combat_event.processing"]  = 3.0,
     ["pipeline.render_tick"]              = 10.0,
     ["graph.sample_tick"]                 = 15.0,
-    -- per-view render zones (compute lens; the decimation cliff lives here)
     ["render.OUTCOME"]                    = 12.0,
     ["render.TYPE"]                       = 12.0,
     ["render.SURVIVAL"]                   = 12.0,

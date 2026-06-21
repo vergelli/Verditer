@@ -1,13 +1,6 @@
 <GuiXml>
   <Controls>
 
-    <!--
-      Verditer settings — a movable window with the three v0.1 sliders
-      (SPEC §2.1): Sampling Rate, Time Window, Viewport Alpha. There is no
-      Unknown-contributions entry: incoming classification is total by
-      construction, so there is nothing to assign (SPEC §10.1). Position
-      persisted in SavedVars.settings.{x,y}.
-    -->
     <TopLevelControl name="VerditerSettingsPanel"
                      hidden="true"
                      clampedToScreen="true"
@@ -28,8 +21,6 @@
           <Insets left="6" top="6" right="-6" bottom="-6"/>
         </Backdrop>
 
-        <!-- ── title bar ───────────────────────────────────────────────── -->
-        <!-- Brand mark: small logo left of the window title (identity). -->
         <Texture name="$(parent)BrandLogo" textureFile="Verditer/assets/logo.dds">
           <Anchor point="TOPLEFT" offsetX="12" offsetY="8"/>
           <Dimensions x="24" y="24"/>
@@ -53,7 +44,6 @@
           <OnClicked>Verditer.Settings.toggle()</OnClicked>
         </Button>
 
-        <!-- ── Row 1: Sampling Rate ────────────────────────────────────── -->
         <Label name="$(parent)SampleTitle"
                font="ZoFontGameSmall"
                horizontalAlignment="LEFT"
@@ -79,7 +69,6 @@
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Control>
 
-        <!-- ── Row 2: Time Window ──────────────────────────────────────── -->
         <Label name="$(parent)TWindowTitle"
                font="ZoFontGameSmall"
                horizontalAlignment="LEFT"
@@ -105,7 +94,6 @@
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Control>
 
-        <!-- ── Row 3: Viewport Alpha ───────────────────────────────────── -->
         <Label name="$(parent)VPAlphaTitle"
                font="ZoFontGameSmall"
                horizontalAlignment="LEFT"
@@ -131,7 +119,6 @@
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Control>
 
-        <!-- ── Death Recap on/off toggle ───────────────────────────────── -->
         <Button name="$(parent)RecapBtn"
                 mouseEnabled="true"
                 font="ZoFontGameSmall"
@@ -142,7 +129,6 @@
           <OnClicked>Verditer.Settings.on_recap_click()</OnClicked>
         </Button>
 
-        <!-- ── Logo visibility toggle ──────────────────────────────────── -->
         <Button name="$(parent)LogoBtn"
                 mouseEnabled="true"
                 font="ZoFontGameSmall"
@@ -153,7 +139,6 @@
           <OnClicked>Verditer.Settings.on_logo_click()</OnClicked>
         </Button>
 
-        <!-- ── Reset to Defaults button ────────────────────────────────── -->
         <Button name="$(parent)ResetBtn"
                 mouseEnabled="true"
                 font="ZoFontGameSmall"

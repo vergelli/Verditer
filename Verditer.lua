@@ -1,10 +1,3 @@
---[[
-
-  Verditer — incoming-damage / survivability analytics for The Elder Scrolls
-  Online. The third sibling: Verdant heals, Vermilion hits, Verditer gets hit.
-  "What hit me, what almost killed me." Standalone, zero dependencies.
-
-]]
 
 Verditer = Verditer or {}
 local Verditer = Verditer
@@ -30,7 +23,7 @@ local function on_slash(input)
       elseif sub == "off"   then Verditer.Probe.set_enabled(false)
       elseif sub == "stats" then Verditer.Probe.print_stats()
       elseif sub == "clear" then Verditer.Probe.clear()
-      else                       Verditer.Probe.dump() end   -- bare "probe" / "probe dump" -> CopyBox
+      else                       Verditer.Probe.dump() end
       return
     elseif cmd == "report" then
       local sub = string_match(string_lower(input), "^%s*%S+%s+(%S+)") or ""
@@ -39,19 +32,13 @@ local function on_slash(input)
       local n = tonumber(string_match(input, "^%s*%S+%s+(%d+)")) or 1000
       Verditer.Diagnostics.gc_probe(n) ; return
     elseif cmd == "bench" then
-      -- /verditer bench <label> [force] — render ledger (compute/graphics/memory) to
-      -- CopyBox. label kept case-sensitive (raw input) so "baseline"/"post" diff cleanly.
-      -- `force` overrides the disconnect-safety gate for huge capacities.
       local label = string_match(input, "^%s*%S+%s+(%S+)") or "run"
       local force = string_match(string_lower(input), "%sforce%s*$") ~= nil
       Verditer.Bench.run(label, force) ; return
     elseif cmd == "allocprobe" then
-      -- /verditer allocprobe [n] — isolate per-view render alloc (corners F4).
       local n = tonumber(string_match(input, "^%s*%S+%s+(%d+)")) or 1000
       Verditer.Bench.alloc_probe(n) ; return
     elseif cmd == "stress" then
-      -- /verditer stress fill [n]   → fabricate worst-case samples (render path)
-      -- /verditer stress events [n] → inject events through the pipeline (hot path)
       local sub = string_match(string_lower(input), "^%s*%S+%s+(%S+)") or ""
       local arg = tonumber(string_match(input, "^%s*%S+%s+%S+%s+(%d+)"))
       if sub == "events" then Verditer.Bench.stress_events(arg)
@@ -132,13 +119,13 @@ local function on_addon_loaded()
   Log:info("savedvars opened: world=", world, "version=", C.SV_VERSION)
 
   if C.DEBUG then Verditer.Probe.init() end
-  Verditer.GC.init()           -- GC pacing (APOD #3): smooth the incremental collector
+  Verditer.GC.init()
   Verditer.Pipeline.init()
   Verditer.Logo.init()
-  Verditer.DeathRecap.init()   -- read recap-enabled SV + wire hooks BEFORE Settings paints its toggle
+  Verditer.DeathRecap.init()
   Verditer.Settings.init()
   Verditer.Graph.init()
-  Verditer.Recap.init()        -- build the recap window (capturer fires only on a later death)
+  Verditer.Recap.init()
   Verditer.Visibility.init()
 
   SLASH_COMMANDS[C.SLASH_COMMAND] = on_slash

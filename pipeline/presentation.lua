@@ -1,10 +1,3 @@
---* pipeline/presentation.lua
---*
---* Stage 4. Read-side: builds a stable RenderPayload from metrics state, mutated
---* in place each tick — zero per-tick allocation (type_groups is pre-grown by
---* Metrics.type_groups_into). A parallel read path: the graph's sample tick
---* reads core/metrics directly and pushes into core/temporal_buffer; this
---* payload is the snapshot surface for introspection / future consumers.
 
 Verditer = Verditer or {}
 local Verditer = Verditer

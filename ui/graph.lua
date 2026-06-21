@@ -28,22 +28,21 @@ local TEXT_ALIGN_LEFT   = zc.TEXT_ALIGN_LEFT
 local TEXT_ALIGN_CENTER = zc.TEXT_ALIGN_CENTER
 local TEXT_ALIGN_BOTTOM = zc.TEXT_ALIGN_BOTTOM
 
--- Brand-blue identity (HANDOFF §2). Red = HP lost, blue = shield lost.
-local C_DTPS      = { r = 0.90, g = 0.30, b = 0.25, a = 0.92 }  -- DANGER red (reached HP)
-local C_ABS       = { r = 0.18, g = 0.42, b = 0.88, a = 0.90 }  -- VERDITER blue (shield ate it)
-local C_LINE_DTPS = { r = 1.00, g = 0.46, b = 0.40, a = 1.00 }  -- bright red frontier
-local C_LINE_ABS  = { r = 0.44, g = 0.66, b = 1.00, a = 1.00 }  -- bright blue frontier
-local C_LINE_TOP  = { r = 0.80, g = 0.88, b = 1.00, a = 1.00 }  -- pale-blue DTPS frontier (type view)
-local C_BASELINE  = { r = 0.78, g = 0.86, b = 1.00, a = 0.55 }  -- shared axis (Outcome)
-local C_CHROME    = Verditer.Constants.BRAND.CHROME            -- shared blue chrome wash
-local C_EDGE      = Verditer.Constants.BRAND.EDGE              -- shared vivid border
-local C_VIEWPORT  = { r = 0.30, g = 0.45, b = 0.85 }            -- viewport tint (blue)
 
--- Survival views
-local C_HP        = { r = 0.30, g = 0.80, b = 0.45, a = 0.92 }  -- green: HP remaining
-local C_HP_LOST   = { r = 0.42, g = 0.44, b = 0.50, a = 0.80 }  -- grey: standing wound
-local C_HP_FRESH  = { r = 0.90, g = 0.30, b = 0.25, a = 0.92 }  -- red: HP lost this tick
-local C_FULL_LINE = { r = 0.55, g = 0.95, b = 0.65, a = 0.45 }  -- the 100% reference line
+local C_DTPS      = { r = 0.90, g = 0.30, b = 0.25, a = 0.92 }
+local C_ABS       = { r = 0.18, g = 0.42, b = 0.88, a = 0.90 }
+local C_LINE_DTPS = { r = 1.00, g = 0.46, b = 0.40, a = 1.00 }
+local C_LINE_ABS  = { r = 0.44, g = 0.66, b = 1.00, a = 1.00 }
+local C_LINE_TOP  = { r = 0.80, g = 0.88, b = 1.00, a = 1.00 }
+local C_BASELINE  = { r = 0.78, g = 0.86, b = 1.00, a = 0.55 }
+local C_CHROME    = Verditer.Constants.BRAND.CHROME
+local C_EDGE      = Verditer.Constants.BRAND.EDGE
+local C_VIEWPORT  = { r = 0.30, g = 0.45, b = 0.85 }
+
+local C_HP        = { r = 0.30, g = 0.80, b = 0.45, a = 0.92 }
+local C_HP_LOST   = { r = 0.42, g = 0.44, b = 0.50, a = 0.80 }
+local C_HP_FRESH  = { r = 0.90, g = 0.30, b = 0.25, a = 0.92 }
+local C_FULL_LINE = { r = 0.55, g = 0.95, b = 0.65, a = 0.45 }
 
 local FILL_TEXTURE   = "EsoUI/Art/UnitAttributeVisualizer/attributeBar_dynamic_fill.dds"
 local FILL_T, FILL_B = 0, 0.53125
@@ -53,71 +52,44 @@ local N_HGRID      = 3
 local N_VGRID      = 3
 local TIME_STRIP_H = 18
 
--- BY_SOURCE legend (top-right overlay): a KEY, not the full breakdown. Capped to
--- top-(LEGEND_SHOW-1) + a rolled "Other +N" row so it never grows tall enough to
--- bury the plot when many attackers stack (BACKLOG N). Kept translucent + narrow
--- to stay out of the way; the stack itself still shows every group's colour.
-local LEGEND_MAX   = 8     -- size of the row control array (data cap from the metric)
-local LEGEND_SHOW  = 5     -- max legend rows: top-4 individual + one rolled "Other"
+local LEGEND_MAX   = 8
+local LEGEND_SHOW  = 5
 local LEGEND_W     = 122
 local LEGEND_ROW_H = 14
 local LEGEND_PAD   = 4
 local C_LEGEND_BG  = { r = 0.04, g = 0.06, b = 0.12, a = 0.58 }
 local C_LEGEND_LBL = { r = 0.88, g = 0.91, b = 0.97, a = 1.0 }
-local C_LEGEND_ROLL = { r = 0.55, g = 0.55, b = 0.58, a = 1.0 }  -- grey: the "Other +N" fold
+local C_LEGEND_ROLL = { r = 0.55, g = 0.55, b = 0.58, a = 1.0 }
 local C_GRID_LINE = { r = 0.55, g = 0.58, b = 0.70, a = 0.25 }
 local C_GRID_LBL  = { r = 0.82, g = 0.85, b = 0.90, a = 0.92 }
 local C_TIME_LBL  = { r = 0.68, g = 0.70, b = 0.75, a = 0.85 }
-
--- state
 local controls           = {}
 local recording_start_ms = 0
-
 local VIEW_OUTCOME        = 1
 local VIEW_BY_DAMAGE_TYPE = 2
-local VIEW_SURVIVAL       = 3   -- HP green/red/grey bars
-local VIEW_BY_SOURCE      = 4   -- stacked by attacker ("who's killing me")
+local VIEW_SURVIVAL       = 3
+local VIEW_BY_SOURCE      = 4
 local VIEW_MIN, VIEW_MAX  = VIEW_OUTCOME, VIEW_BY_SOURCE
 local VIEW_LABELS         = { "OUTCOME", "TYPE", "SURVIVAL", "SOURCE" }
 local current_view        = VIEW_OUTCOME
-
--- Compute-lens instrumentation: each view gets its own profiler zone so the ledger
--- can attribute render cost per view (the decimation cliff lives here). The zone
--- names are pre-built (no per-render string concat) and prof_enter/exit are NOOP
--- when DEBUG=false, so the live render pays only a table lookup + two NOOP calls.
 local prof_enter   = Verditer.Profiler.enter
 local prof_exit    = Verditer.Profiler.exit
 local RENDER_ZONE  = { "render.OUTCOME", "render.TYPE", "render.SURVIVAL", "render.SOURCE" }
-
-local prev_hp = -1   -- previous sample's hp_pct, for the fresh-loss (red) band
-
--- ── Hover (Datadog-style, BACKLOG D) ──────────────────────────────────────────
--- STATIC SESSION ONLY: enabled when stopped on a stacked view (TYPE/SOURCE). The
--- hovered group brightens across every bar while the rest dim, and a small tooltip
--- follows the cursor. To avoid duplicating the render geometry, render_stacked
--- builds a hit index as it draws (per-column x-range + each group's y-band); the
--- poll then maps the cursor to a band by pure lookup. nil hover_key = no highlight.
+local prev_hp = -1
 local hover_key  = nil
 local hit = { cols = {}, n = 0 }
-local C_DIM_BIAS = 0.05   -- dim = darken+desaturate toward this, at low alpha
-local render_current_view   -- forward decl (hover helpers call it before it's defined)
-
--- Fade controllers for the card + crosshair (increment 3 polish): smooth appear/
--- disappear at the edges of a hover, no fade while scrubbing column to column.
+local C_DIM_BIAS = 0.05
+local render_current_view
 local FADE_MS = 120
 local card_fader, crosshair_fader
-
--- Hover card (increment 2): a small branded panel that follows the cursor —
--- group swatch + name (in its colour) + "value DTPS · %". Replaces the plain tooltip.
 local CARD_W, CARD_H = 196, 56
-local C_CARD_BG     = { r = 0.04, g = 0.06, b = 0.12, a = 0.96 }  -- dark brand tint
-local C_CARD_ACCENT = { r = 0.18, g = 0.42, b = 0.88, a = 1.0 }   -- brand-blue left bar
+local C_CARD_BG     = { r = 0.04, g = 0.06, b = 0.12, a = 0.96 }
+local C_CARD_ACCENT = { r = 0.18, g = 0.42, b = 0.88, a = 1.0 }
 local C_CARD_STAT   = { r = 0.80, g = 0.84, b = 0.92, a = 1.0 }
-local C_CARD_NAME   = { r = 0.85, g = 0.90, b = 1.00, a = 1.0 }   -- moment-card title (non-stacked)
-local C_CARD_TIME   = { r = 0.60, g = 0.64, b = 0.72, a = 1.0 }   -- faint x-axis (time) line
-local C_CROSSHAIR   = { r = 0.44, g = 0.66, b = 1.00, a = 0.50 }  -- scrub line at hovered column
+local C_CARD_NAME   = { r = 0.85, g = 0.90, b = 1.00, a = 1.0 }
+local C_CARD_TIME   = { r = 0.60, g = 0.64, b = 0.72, a = 1.0 }
+local C_CROSSHAIR   = { r = 0.44, g = 0.66, b = 1.00, a = 0.50 }
 
--- small helpers
 local function fmt_val(v)
   return ZO_AbbreviateAndLocalizeNumber(math_floor(v), 0, false)
 end
@@ -132,7 +104,6 @@ local function fmt_readout(v)
   return ZO_AbbreviateAndLocalizeNumber(math_floor(v + 0.5), 1, false)
 end
 
--- Header readout: ITP (incoming total pressure). Defensive-themed icon.
 local ITP_ICON_IDLE   = "/esoui/art/treeicons/collection_indexicon_armor_up.dds"
 local ITP_ICON_ACTIVE = "/esoui/art/treeicons/collection_indexicon_armor_down.dds"
 
@@ -142,8 +113,6 @@ local function update_header(dtps, abs)
   local itp = dtps + abs
   controls.readout:SetText(fmt_readout(itp))
   controls.itp_icon:SetTexture(itp > 0 and ITP_ICON_ACTIVE or ITP_ICON_IDLE)
-  -- effective mitigation = shielded / (shielded + reached-HP). The defensive number
-  -- the tool should show: "my shields ate N% of what was thrown at me."
   if controls.mit then
     if itp > 0 then
       controls.mit:SetText(string_format("Mit %d%%", math_floor(abs / itp * 100 + 0.5)))
@@ -266,7 +235,6 @@ local function draw_time_strip(grid, canvas, span_ms)
   end
 end
 
--- bottom-anchored grid (stacked views: BY_DAMAGE_TYPE)
 local function draw_grid(grid, canvas, max_val, span_ms)
   local cw = canvas:GetWidth()
   local ch = canvas:GetHeight()
@@ -315,8 +283,6 @@ local function draw_grid(grid, canvas, max_val, span_ms)
   draw_time_strip(grid, canvas, span_ms)
 end
 
--- diverging grid (Outcome): a bright shared baseline mid-plot, faint quartiles
--- above/below, max labels at the two tips, plus the time strip.
 local function draw_grid_diverging(grid, canvas, baseline_y, half, max_dtps, max_abs, span_ms)
   local cw = canvas:GetWidth()
   local ch = canvas:GetHeight()
@@ -331,11 +297,10 @@ local function draw_grid_diverging(grid, canvas, baseline_y, half, max_dtps, max
     gl:SetHidden(false)
   end
 
-  hline(1, baseline_y, C_BASELINE)                 -- shared axis
-  hline(2, baseline_y + math_floor(half * 0.5), C_GRID_LINE)   -- DTPS quartile
-  hline(3, baseline_y - math_floor(half * 0.5), C_GRID_LINE)   -- ABS quartile
+  hline(1, baseline_y, C_BASELINE)
+  hline(2, baseline_y + math_floor(half * 0.5), C_GRID_LINE)
+  hline(3, baseline_y - math_floor(half * 0.5), C_GRID_LINE)
 
-  -- y labels: 0 at the baseline, max DTPS up, max ABS down — each its own scale
   grid.ylabels[1]:ClearAnchors()
   grid.ylabels[1]:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, 2, -(baseline_y + 1))
   grid.ylabels[1]:SetText("0")
@@ -373,19 +338,8 @@ local function release_all_pools()
   controls.pool_line_down:ReleaseAllObjects()
 end
 
--- ── Decimation (BACKLOG E; M4-style, specialized to bars) ─────────────────────
--- Render cost WAS O(samples): drawing samples × groups controls, which at high
--- sample-rate × long window blows past the canvas pixel count → multi-second freezes
--- and server disconnects (APOD Assess, tests/APOD/). Fix: never draw more columns
--- than the canvas has pixels. Bucket the buffer's LOGICAL slots into num_cols pixel
--- columns and fold each with a SPIKE-PRESERVING reducer: MAX(DTPS/ABS/hp_drop),
--- MIN(hp), and the groups OF THE PEAK-DTPS sample (so the stacked composition matches
--- the spike height). For bottom-anchored bars this is M4 pixel-perfect (a bar 0→max
--- covers every sample below it). Right-aligned: logical slot p∈[0,capacity) maps to
--- column floor(p*num_cols/capacity), so a partial recording fills from the right just
--- as before. Output reuses dec_cols (zero-alloc); group refs are shared, never copied.
 local MIN_COL_PX = 2
-local dec_cols   = {}    -- reused folded-column scratch (sample-shaped)
+local dec_cols   = {}
 
 local function decimate(cw)
   local TB       = Verditer.TemporalBuffer
@@ -411,7 +365,7 @@ local function decimate(cw)
       col.source_groups = s.source_groups
       cur_c = c
     else
-      if s.DTPS > col.DTPS then             -- peak height + matching group composition
+      if s.DTPS > col.DTPS then
         col.DTPS = s.DTPS
         col.type_groups = s.type_groups
         col.source_groups = s.source_groups
@@ -419,7 +373,7 @@ local function decimate(cw)
       if s.ABS > col.ABS then col.ABS = s.ABS end
       if s.hp_pct >= 0 and (col.hp_pct < 0 or s.hp_pct < col.hp_pct) then col.hp_pct = s.hp_pct end
       if s.hp_drop > col.hp_drop then col.hp_drop = s.hp_drop end
-      col.t = s.t                            -- column time = its last sample
+      col.t = s.t
     end
   end)
   local col_w   = cw / num_cols
@@ -427,16 +381,12 @@ local function decimate(cw)
   return m, num_cols, col_w, bar_gap
 end
 
--- Pixel-snapped column rect (also kills the BACKLOG L moiré): integer left/right via
--- cumulative rounding so columns tile the pixel grid exactly. Caller derives the drawn
--- width (right-left-gap) and the hover hit-span (full right-left) from this.
 local function dec_rect(c, num_cols, cw)
   local left  = math_floor(c       * cw / num_cols + 0.5)
   local right = math_floor((c + 1) * cw / num_cols + 0.5)
   return left, right
 end
 
--- extents over the window
 local function extent_dtps()
   local max_dtps = 0
   local t_first, t_last = 0, 0
@@ -448,10 +398,6 @@ local function extent_dtps()
   return max_dtps, (t_last - t_first)
 end
 
--- Outcome uses INDEPENDENT per-side scales (Federico, in-game 2026-06-17): the
--- top half fills to max(DTPS), the bottom half to max(ABS), so each side reads
--- against its own peak and the full opening encodes max(DTPS) + max(ABS). (This
--- supersedes SPEC §5.1's shared-scale note, which compressed the smaller side.)
 local function extent_outcome()
   local max_dtps, max_abs = 0, 0
   local t_first, t_last = 0, 0
@@ -464,15 +410,9 @@ local function extent_outcome()
   return max_dtps, max_abs, (t_last - t_first)
 end
 
--- hoisted scratch (see Vermilion: avoid per-frame array alloc at high capacity)
 local rt_xs, rt_top_hs              = {}, {}
 local ro_xs, ro_up_hs, ro_down_ys   = {}, {}, {}
 
--- ── BY_SOURCE legend ──────────────────────────────────────────────────────────
--- Name cleaning is deferred to here (the only place names are displayed). Raw
--- combat-event names carry the `^Mx` gender markup and PvP realm codes; zo_strformat
--- strips them. Cached by raw string so a steady fight formats each name once, not
--- every tick.
 local name_cache = {}
 local function clean_name(raw)
   if raw == nil or raw == "" then return "" end
@@ -484,8 +424,6 @@ local function clean_name(raw)
   return c
 end
 
--- Display label for a source slot: Other fold, environment/self (uid 0), or a
--- cleaned attacker name (falling back to "Unknown" if the engine gave no name).
 local function source_label(grp)
   if grp.uid == -1 then return "Other" end
   if grp.uid == 0  then return "Environment" end
@@ -498,9 +436,6 @@ local function create_legend(prefix, parent)
   local WM = WINDOW_MANAGER
   local L  = { rows = {} }
 
-  -- The bar fills are created lazily on first render (after init), so by creation
-  -- order they'd draw OVER the legend. Force the legend above them with a high
-  -- draw level (bars stay at the default 0).
   L.bg = WM:CreateControl(prefix .. "Bg", parent, CT_TEXTURE)
   L.bg:SetTexture(FILL_TEXTURE)
   L.bg:SetTextureCoords(0, 1, 0, 0.05)
@@ -540,18 +475,12 @@ local function hide_legend()
   end
 end
 
--- Render the legend from the latest sample's source_groups (already top-7+Other,
--- sorted by share desc). Mirrors the rightmost stacked column, so it persists when
--- recording is stopped (unlike a fresh "now" recompute, which would empty out).
 local function update_legend(groups)
   local L = controls.legend
   if not L then return end
   local total = (groups and (groups.count or 0)) or 0
   if total == 0 then hide_legend() return end
 
-  -- A legend is a key, not the breakdown: show at most LEGEND_SHOW rows. When
-  -- there are more groups, the last row rolls the remainder into "Other +N" (its
-  -- summed share), so the block height is bounded and never buries the plot.
   local rows   = (total < LEGEND_SHOW) and total or LEGEND_SHOW
   local rolled = total > LEGEND_SHOW
 
@@ -593,10 +522,6 @@ local function update_legend(groups)
   end
 end
 
--- A tiny fade controller wrapping ZO_AlphaAnimation. `visible` tracks the logical
--- state so a fade only fires on the show/hide EDGE (calling fade_in while already
--- shown is a no-op — exactly what scrubbing needs). The control starts at alpha 0 +
--- hidden (set at creation) so the first fade-in is actually visible.
 local function make_fader(control)
   return { anim = ZO_AlphaAnimation:New(control), control = control, visible = false }
 end
@@ -610,22 +535,18 @@ end
 local function fade_out(f)
   if not f or not f.visible then return end
   f.visible = false
-  local control = f.control                       -- capture by closure (don't trust the
-  f.anim:FadeOut(0, FADE_MS, nil, function()      -- OnStop callback arg's identity)
+  local control = f.control
+  f.anim:FadeOut(0, FADE_MS, nil, function()
     control:SetHidden(true)
   end)
 end
 
--- Hover is allowed on any frozen view with data, while shown. Stacked views add the
--- group highlight/dim; non-stacked views (OUTCOME/SURVIVAL) get crosshair + a moment
--- card only (nothing to highlight).
 local function hover_allowed()
   return not Verditer.TemporalBuffer.is_recording()
      and Verditer.TemporalBuffer.count() > 0
      and not controls.window:IsHidden()
 end
 
--- Display label for a hovered band, by the active view's key space.
 local function hover_label(band)
   if current_view == VIEW_BY_SOURCE then
     if band.key == -1 then return "Other" end
@@ -644,16 +565,13 @@ local function hide_hover_ui()
   fade_out(crosshair_fader)
 end
 
--- Build the cursor-following hover card once (parented to the window so it draws
--- above the canvas/bars). A textured bg + brand-blue accent bar, a colour swatch,
--- the group name (in its colour) and a stat line.
 local function build_hover_card()
   local WM   = WINDOW_MANAGER
   local root = WM:CreateControl("VerditerHoverCard", controls.window, zc.CT_CONTROL)
   root:SetDimensions(CARD_W, CARD_H)
   root:SetMouseEnabled(false)
   root:SetDrawLevel(20)
-  root:SetAlpha(0)        -- starts transparent so the first fade-in is visible
+  root:SetAlpha(0)
   root:SetHidden(true)
 
   local bg = WM:CreateControl("VerditerHoverCardBg", root, CT_TEXTURE)
@@ -703,14 +621,11 @@ local function build_hover_card()
   controls.card = { root = root, swatch = swatch, name = name, stat = stat, time = time }
 end
 
--- hex of a colour table, for |c..|r markup in the card stat line
 local function hexc(c)
   return string_format("%02x%02x%02x",
     math_floor(c.r * 255 + 0.5), math_floor(c.g * 255 + 0.5), math_floor(c.b * 255 + 0.5))
 end
 
--- Pin the card near the cursor, clamped on-screen (flips left/up near the edges).
--- Visibility is handled by the fader (fade_in), not here.
 local function position_card(mx, my)
   local card = controls.card
   local sw, sh = GuiRoot:GetDimensions()
@@ -725,8 +640,6 @@ local function position_card(mx, my)
   fade_in(card_fader)
 end
 
--- Group-mode card (stacked views): swatch + group name in its colour + value/%.
--- elapsed_ms = the hovered column's time into the recording (the x-axis context).
 local function show_card(band, mx, my, elapsed_ms)
   local card = controls.card
   if not card then return end
@@ -740,8 +653,6 @@ local function show_card(band, mx, my, elapsed_ms)
   position_card(mx, my)
 end
 
--- Moment-mode card (non-stacked views): no group to highlight, so just the column's
--- values at that instant. `stat_text` may carry |c..|r markup for coloured values.
 local function show_moment_card(swatch_c, name_text, stat_text, elapsed_ms, mx, my)
   local card = controls.card
   if not card then return end
@@ -753,14 +664,8 @@ local function show_moment_card(swatch_c, name_text, stat_text, elapsed_ms, mx, 
   position_card(mx, my)
 end
 
--- Map a cursor position (canvas-relative x, height above canvas bottom) to the
--- hovered column and (if over a segment) its group band, using the hit index built
--- during the last render. Returns band (may be nil if above the stack) + the column
--- (for the crosshair + time even when the cursor is above the bars).
 local function hover_pick(rel_x, height_above)
   if hit.n == 0 then return nil, nil end
-  -- Columns are decimated (non-uniform in slot space) but sorted left→right, so we
-  -- scan for the one whose x-range holds the cursor. ≤ num_cols, frozen-session only.
   local col = nil
   for i = 1, hit.n do
     local c = hit.cols[i]
@@ -775,8 +680,6 @@ local function hover_pick(rel_x, height_above)
   return band, col
 end
 
--- Poll while the cursor is over the canvas: re-highlight on group change, and keep
--- the tooltip pinned to the cursor. Cheap (runs only when stopped + hovering).
 local function hover_poll()
   if not hover_allowed() then
     if hover_key ~= nil then hover_key = nil; render_current_view() end
@@ -799,8 +702,6 @@ local function hover_poll()
 
   if not col then hide_hover_ui(); return end
 
-  -- crosshair: a scrub line at the hovered column (shown whenever over a column,
-  -- even above the bars, so you can read the time anywhere in the slice)
   if controls.crosshair then
     local cx = math_floor((col.x0 + col.x1) * 0.5)
     controls.crosshair:ClearAnchors()
@@ -811,7 +712,7 @@ local function hover_poll()
 
   local elapsed = (col.t and hit.t0) and (col.t - hit.t0) or 0
   if band then
-    show_card(band, mx, my, elapsed)                      -- stacked: group card
+    show_card(band, mx, my, elapsed)
   elseif current_view == VIEW_OUTCOME then
     show_moment_card(C_DTPS, "Incoming",
       string_format("|c%s%s DTPS|r  ·  |c%s%s ABS|r",
@@ -824,11 +725,10 @@ local function hover_poll()
       string_format("|c%sHP  %d%%|r", hexc(C_HP), math_floor(hp * 100 + 0.5)),
       elapsed, mx, my)
   else
-    fade_out(card_fader)                                  -- stacked but above the stack
+    fade_out(card_fader)
   end
 end
 
--- Toggle the hit layer with the gate; clear any stale highlight/tooltip when off.
 local function update_hover_gate()
   local on = hover_allowed()
   if controls.hit then
@@ -845,16 +745,12 @@ local function update_hover_gate()
   end
 end
 
--- Hit-index helpers (shared by all hoverable renders). hit_begin sets the per-render
--- geometry; hit_col records a column's x-range, time and raw values. Stacked views
--- additionally push y-bands per group (see render_stacked); OUTCOME/SURVIVAL leave
--- nb = 0 and the poll reads the column values directly for the moment card.
 local function hit_begin(n)
   hit.n = n
 end
 
 local function hit_col(i, x, bw, s)
-  if i == 1 then hit.t0 = s.t end          -- first sample = recording origin (x-axis 0)
+  if i == 1 then hit.t0 = s.t end
   local col = hit.cols[i]
   if not col then col = { bands = {} }; hit.cols[i] = col end
   col.x0 = x; col.x1 = x + bw; col.nb = 0; col.t = s.t
@@ -862,12 +758,6 @@ local function hit_col(i, x, bw, s)
   return col
 end
 
--- Shared stacked-bar renderer: per-tick column of height ∝ DTPS, segmented by a
--- group set. View 2 (BY_DAMAGE_TYPE) keys it on `type_groups`, View 4 (BY_SOURCE)
--- on `source_groups` — identical geometry, different grouping. Each group slot
--- carries its own colour, so the renderer never knows what it's stacking.
--- `key_field` ("dt"/"uid") identifies a group for hover highlighting; when the
--- session is frozen it also records the hit index (per-column bands) for the hover.
 local function render_stacked(groups_field, key_field)
   release_all_pools()
 
@@ -891,10 +781,8 @@ local function render_stacked(groups_field, key_field)
   local m, num_cols, col_w, bar_gap = decimate(cw)
   local xs, top_hs = rt_xs, rt_top_hs
 
-  -- hit index is only needed (and only valid) on a frozen session; skip the extra
-  -- bookkeeping entirely while recording so the hot path stays untouched.
   local capture = not Verditer.TemporalBuffer.is_recording()
-  local hk = hover_key   -- nil = no highlight; else dim every group but this key
+  local hk = hover_key
   if capture then hit_begin(m) end
 
   for i = 1, m do
@@ -906,7 +794,7 @@ local function render_stacked(groups_field, key_field)
     xs[i]     = x + bw * 0.5
     top_hs[i] = col_h
 
-    local col = capture and hit_col(i, left, right - left, s) or nil   -- full width = continuous hover
+    local col = capture and hit_col(i, left, right - left, s) or nil
 
     local y_off  = 0
     local groups = s[groups_field]
@@ -920,9 +808,9 @@ local function render_stacked(groups_field, key_field)
       t:SetHeight(seg_h)
       if hk ~= nil and grp[key_field] ~= hk then
         t:SetColor(grp.r * 0.30 + C_DIM_BIAS, grp.g * 0.30 + C_DIM_BIAS,
-                   grp.b * 0.30 + C_DIM_BIAS, 0.28)               -- backgrounded
+                   grp.b * 0.30 + C_DIM_BIAS, 0.28)
       else
-        t:SetColor(grp.r, grp.g, grp.b, grp.a)                   -- full / highlighted
+        t:SetColor(grp.r, grp.g, grp.b, grp.a)
       end
       t:SetHidden(false)
 
@@ -934,8 +822,8 @@ local function render_stacked(groups_field, key_field)
         band.lo    = TIME_STRIP_H + y_off
         band.hi    = TIME_STRIP_H + y_off + seg_h
         band.share = grp.share
-        band.dtps  = s.DTPS        -- column total → group value = share * dtps
-        band.name  = grp.name      -- nil for TYPE; raw attacker name for SOURCE
+        band.dtps  = s.DTPS
+        band.name  = grp.name
         band.r = grp.r; band.g = grp.g; band.b = grp.b
         col.nb = nb
       end
@@ -957,12 +845,8 @@ local function render_stacked(groups_field, key_field)
   end
 end
 
--- View 2 — BY_DAMAGE_TYPE: stacked by damageType (fire/shock/…).
 local function render_by_damage_type() render_stacked("type_groups", "dt") end
 
--- View 4 — BY_SOURCE: stacked by attacker ("who's killing me"). Same column
--- height (DTPS), segments coloured by the stable per-uid hash; top-7 + Other.
--- Adds the legend (swatch + name + %) keyed off the latest sample so "who" reads.
 local function render_by_source()
   render_stacked("source_groups", "uid")
   if Verditer.TemporalBuffer.count() > 0 then
@@ -973,9 +857,6 @@ local function render_by_source()
   end
 end
 
--- View 1 — OUTCOME (diverging shared-axis): DTPS grows UP (red) from a shared
--- baseline, ABS grows DOWN (blue). One frontier polyline per side. The shield
--- break reads spatially: blue collapses below while red jumps above.
 local function render_outcome()
   release_all_pools()
 
@@ -992,13 +873,12 @@ local function render_outcome()
   if cw <= 4 or ch <= 4 then return end
   local ch_plot = math_max(4, ch - TIME_STRIP_H)
   local half       = math_floor(ch_plot / 2)
-  local baseline_y = TIME_STRIP_H + half   -- height above canvas bottom
+  local baseline_y = TIME_STRIP_H + half
 
   local max_dtps, max_abs, span_ms = extent_outcome()
   if max_dtps <= 0 and max_abs <= 0 then hide_grid(controls.grid) return end
   draw_grid_diverging(controls.grid, canvas, baseline_y, half, max_dtps, max_abs, span_ms)
 
-  -- per-side pixels-per-unit; 0 when a side has no data (avoids div-by-zero)
   local up_scale   = (max_dtps > 0) and (half / max_dtps) or 0
   local down_scale = (max_abs  > 0) and (half / max_abs)  or 0
 
@@ -1023,9 +903,9 @@ local function render_outcome()
     if up_h > 0 then
       local tu = controls.pool_up:AcquireObject()
       tu:ClearAnchors()
-      tu:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, x, -baseline_y)  -- bottom edge on baseline
+      tu:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, x, -baseline_y)
       tu:SetWidth(bw)
-      tu:SetHeight(up_h)                                           -- grows up
+      tu:SetHeight(up_h)
       tu:SetColor(C_DTPS.r, C_DTPS.g, C_DTPS.b, C_DTPS.a)
       tu:SetHidden(false)
     end
@@ -1033,7 +913,7 @@ local function render_outcome()
     if down_h > 0 then
       local td = controls.pool_down:AcquireObject()
       td:ClearAnchors()
-      td:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, x, -(baseline_y - down_h))  -- bottom edge below baseline
+      td:SetAnchor(BOTTOMLEFT, canvas, BOTTOMLEFT, x, -(baseline_y - down_h))
       td:SetWidth(bw)
       td:SetHeight(down_h)
       td:SetColor(C_ABS.r, C_ABS.g, C_ABS.b, C_ABS.a)
@@ -1062,10 +942,6 @@ local function render_outcome()
   end
 end
 
--- View 3 — SURVIVAL: per-tick HP column. Green = HP remaining (min in the tick),
--- red = HP lost this tick, grey = standing wound; HP empties top-down. The death/
--- respawn reads as the green collapsing to nothing then refilling. (Shields are
--- NOT shown here — they live in the OUTCOME view; this stays pure HP.)
 local function render_survival_bars()
   release_all_pools()
 
@@ -1078,12 +954,11 @@ local function render_survival_bars()
   if cw <= 4 or ch <= 4 then return end
 
   local ch_plot = math_max(4, ch - TIME_STRIP_H)
-  local hp_zone = math_max(4, ch_plot - 12)         -- 12px headroom for the 100% label
-  local y100    = TIME_STRIP_H + hp_zone            -- full-HP line, above canvas bottom
+  local hp_zone = math_max(4, ch_plot - 12)
+  local y100    = TIME_STRIP_H + hp_zone
 
-  local _, span_ms = extent_dtps()                  -- only the time span is needed here
+  local _, span_ms = extent_dtps()
 
-  -- grid: bright 100% line + faint 50% line + time strip
   hide_grid(controls.grid)
   local g = controls.grid
   g.hlines[1]:ClearAnchors()
@@ -1165,7 +1040,6 @@ local function refresh_button_colors()
   local recording = Verditer.TemporalBuffer.is_recording()
   controls.btn_record:SetEnabled(not recording)
   controls.btn_stop:SetEnabled(recording)
-  -- Export appears only on a frozen session that actually has data (BACKLOG F).
   if controls.btn_export then
     controls.btn_export:SetHidden(recording or Verditer.TemporalBuffer.count() == 0)
   end
@@ -1182,7 +1056,7 @@ local function set_view(v)
   current_view = v
   controls.view_label:SetText(VIEW_LABELS[v])
   persist_view()
-  hover_key = nil   -- changing view drops any highlight from the old one
+  hover_key = nil
   if Verditer.TemporalBuffer.count() == 0 then
     controls.no_data:SetHidden(false)
     update_hover_gate()
@@ -1204,7 +1078,7 @@ local function on_sample_update()
   Verditer.Metrics.type_groups_into(sample_type_scratch, now)
   Verditer.Metrics.source_groups_into(sample_source_scratch, now)
 
-  local hp_pct  = Verditer.Metrics.hp_sample()    -- min HP fraction over the interval
+  local hp_pct  = Verditer.Metrics.hp_sample()
   local hp_drop = (prev_hp >= 0 and hp_pct >= 0) and math_max(0, prev_hp - hp_pct) or 0
   prev_hp = hp_pct
   Verditer.TemporalBuffer.push(now, dtps, abs, sample_type_scratch, hp_pct, hp_drop, sample_source_scratch)
@@ -1222,12 +1096,6 @@ end
 
 function M.current_view() return current_view end
 
--- ── DEBUG bench hooks (perf ledger) ───────────────────────────────────────────
--- Expose the render path + pool occupancy so observability/bench.lua can measure
--- compute (per-view zones), graphics (drawn controls), and memory (alloc delta)
--- deterministically. Only ever called from the DEBUG-gated /verditer bench; no
--- effect on the live path. The bench fills the buffer (not recording) first, so
--- these render the FROZEN path (hit-index capture on) — the heaviest, worst case.
 function M.bench_set_view(v) set_view(v) end
 function M.bench_render_once() render_current_view() end
 function M.bench_drawn()
@@ -1260,7 +1128,7 @@ function M.on_record_click()
   controls.no_data:SetHidden(false)
   Verditer.TemporalBuffer.start_recording()
   recording_start_ms = GetGameTimeMilliseconds()
-  Verditer.Metrics.hp_reset()   -- flush any stale dip before this recording
+  Verditer.Metrics.hp_reset()
   prev_hp = -1
   local sv       = Verditer.SavedVars
   local interval = (sv and sv.temporal and sv.temporal.sample_rate_ms)
@@ -1287,8 +1155,6 @@ function M.on_flush_click()
     Verditer.TemporalBuffer.stop_recording()
   end
   Verditer.TemporalBuffer.clear()
-  -- Flush ends the session → discard its death recaps too (they belong to the
-  -- recording; keeping them past Flush just holds memory). See DeathRecap.clear.
   if Verditer.DeathRecap and Verditer.DeathRecap.clear then Verditer.DeathRecap.clear() end
   release_all_pools()
   hide_grid(controls.grid)
@@ -1312,15 +1178,11 @@ function M.on_export_click()
   Verditer.Export.show_session()
 end
 
--- Deaths browser: open the recap and page through every death of the session
--- (prev/next already live in the recap window). No-op if nothing died yet.
 function M.on_deaths_click()
   if not (Verditer.DeathRecap and Verditer.DeathRecap.count() > 0) then return end
   if Verditer.Recap and Verditer.Recap.toggle then Verditer.Recap.toggle() end
 end
 
--- Show the Deaths button only when the session has at least one recorded death.
--- Called when a death commits, on Flush (clear), and on every button refresh.
 function M.notify_deaths_changed()
   if controls.btn_deaths then
     local has = Verditer.DeathRecap and Verditer.DeathRecap.count() > 0
@@ -1428,10 +1290,6 @@ function M.init()
   controls.grid   = create_grid("VerditerGrid", controls.canvas)
   controls.legend = create_legend("VerditerLegend", controls.canvas)
 
-  -- Hover (BACKLOG D): a transparent mouse-enabled layer over the canvas, on only
-  -- when stopped on a stacked view. OnMouseEnter starts a light poll that tracks the
-  -- cursor; OnMouseExit clears the highlight. A 1px anchor pins the tooltip to the
-  -- cursor. Both start disabled (no data / recording at load).
   controls.hit = WINDOW_MANAGER:CreateControl("VerditerGraphHit", controls.canvas, zc.CT_CONTROL)
   controls.hit:ClearAnchors()
   controls.hit:SetAnchor(TOPLEFT,     controls.canvas, TOPLEFT,     0, 0)
@@ -1448,19 +1306,17 @@ function M.init()
     if hover_key ~= nil then hover_key = nil; render_current_view() end
   end)
 
-  -- crosshair scrub line (drawn above the bars, below the legend)
   controls.crosshair = WINDOW_MANAGER:CreateControl("VerditerGraphCrosshair", controls.canvas, CT_TEXTURE)
   controls.crosshair:SetTexture(FILL_TEXTURE)
   controls.crosshair:SetTextureCoords(0, 0.05, 0, 1)
   controls.crosshair:SetWidth(1)
   controls.crosshair:SetColor(C_CROSSHAIR.r, C_CROSSHAIR.g, C_CROSSHAIR.b, C_CROSSHAIR.a)
   controls.crosshair:SetDrawLevel(4)
-  controls.crosshair:SetAlpha(0)        -- fade target; effective colour-alpha stays 0.5
+  controls.crosshair:SetAlpha(0)
   controls.crosshair:SetHidden(true)
 
   build_hover_card()
 
-  -- fade controllers (created after their controls exist)
   card_fader      = make_fader(controls.card.root)
   crosshair_fader = make_fader(controls.crosshair)
 
@@ -1476,16 +1332,14 @@ function M.init()
   controls.btn_record:SetText(GetString(VERDITER_GRAPH_RECORD))
   controls.btn_stop:SetText(GetString(VERDITER_GRAPH_STOP))
   controls.btn_flush:SetText(GetString(VERDITER_GRAPH_FLUSH))
-  -- semantic colour-coding (personality + readability): Record = go/brand-blue,
-  -- Stop = amber pause, Flush = danger red (it destroys the session).
   local function tint_btn(btn, r, g, b)
     btn:SetNormalFontColor(r, g, b, 1)
     btn:SetMouseOverFontColor(math_min(1, r + 0.12), math_min(1, g + 0.12), math_min(1, b + 0.12), 1)
     btn:SetPressedFontColor(r * 0.85, g * 0.85, b * 0.85, 1)
   end
-  tint_btn(controls.btn_record, 0.44, 0.70, 1.00)   -- brand blue
-  tint_btn(controls.btn_stop,   0.96, 0.80, 0.34)   -- amber
-  tint_btn(controls.btn_flush,  0.93, 0.40, 0.34)   -- danger red
+  tint_btn(controls.btn_record, 0.44, 0.70, 1.00)
+  tint_btn(controls.btn_stop,   0.96, 0.80, 0.34)
+  tint_btn(controls.btn_flush,  0.93, 0.40, 0.34)
   controls.status:SetText("")
   controls.status:SetColor(0.65, 0.65, 0.65, 1)
   controls.no_data:SetText(GetString(VERDITER_GRAPH_NO_DATA))
@@ -1495,7 +1349,7 @@ function M.init()
   controls.view_label:SetColor(0.78, 0.84, 0.95, 1)
 
   controls.readout:SetColor(C_LINE_ABS.r, C_LINE_ABS.g, C_LINE_ABS.b, 0.95)
-  controls.mit:SetColor(C_LINE_ABS.r, C_LINE_ABS.g, C_LINE_ABS.b, 0.72)  -- soft blue: shield = mitigation
+  controls.mit:SetColor(C_LINE_ABS.r, C_LINE_ABS.g, C_LINE_ABS.b, 0.72)
   update_header(0, 0)
   zev.register_update("VerditerHeaderTick", 1000, header_tick)
   refresh_button_colors()

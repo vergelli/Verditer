@@ -1,23 +1,3 @@
---* observability/bench.lua  (APOD Assess — the perf ledger instrument)
---*
---* Research-grade measurement harness. Three lenses over one system:
---*   compute  → per-view render timing (Profiler zones render.<VIEW>)
---*   graphics → drawn-control count (pool occupancy) + canvas px (over-draw ratio)
---*   memory   → alloc delta per render (steady-state, post-warmup)
---*
---* Two synthetic injectors (deterministic, so baseline vs post-vulkan diff is
---* exact — no Math.random):
---*   stress_fill   → fabricates WORST-CASE samples straight into the TemporalBuffer
---*                   (max groups every sample) to exercise the render/decimation path
---*                   without a real fight. The render cost depends only on buffer
---*                   occupancy × canvas × view, not on how the samples got there.
---*   stress_events → injects fabricated combat events through the live pipeline
---*                   (dispatch_dmg_in/abs_in) to exercise the hot path (acquisition→
---*                   filter→processing→metrics) at volume for compute + alloc.
---*
---* /verditer bench <label>  runs the render lenses and dumps ONE ledger to the
---* CopyBox, including a machine-readable BENCH-CSV block for matplotlib (diff two
---* labelled runs to see the vulkanization delta). DEBUG-only; NOOP in release.
 
 Verditer = Verditer or {}
 local Verditer = Verditer
@@ -47,16 +27,12 @@ local math_max       = math.max
 local string_format  = string.format
 local table_concat   = table.concat
 
--- ── synthetic shape (deterministic worst case) ────────────────────────────────
+
 local SAMPLE_MS      = 100   -- spacing between fabricated samples (cosmetic; render ignores it)
 local TYPE_BUCKETS   = 8     -- max damage-type groups per sample
 local SOURCE_BUCKETS = 8     -- max attacker groups per sample (top-7 + Other)
 local REPS           = 20    -- render repetitions per view for stable percentiles
 
--- Safety: PRE-decimation the synchronous render drew samples × groups controls, so
--- ~3000 samples disconnected (303). POST-decimation the DRAW is capped to pixel
--- columns, so the only O(n) cost left is the fold + fill (cheap) — the old disconnect
--- regime is now safe to bench. Gate only against an absurd buffer (fold/fill cost).
 local SAFETY_MAX_SAMPLES = 20000   -- well above any real config (10Hz×10min = 6000)
 
 -- worst-case group scratch, built ONCE and reused (push copies out of it, so the
@@ -78,17 +54,13 @@ end
 local TYPE_SCRATCH   = build_groups(TYPE_BUCKETS,   false)
 local SOURCE_SCRATCH = build_groups(SOURCE_BUCKETS, true)
 
--- pre-built source names (engine hands us an existing string by reference → zero
--- per-event alloc in our code; the injector must mirror that, not alloc per call).
 local MOCK_NAMES = {}
 for i = 0, SOURCE_BUCKETS do MOCK_NAMES[i] = "Mock " .. i end
 
--- deterministic spiky signals (the spike is the whole point — keep it visible)
 local function synth_dtps(i) return 8000 + 4000 * math_sin(i * 0.30) + ((i % 17 == 0) and 60000 or 0) end
 local function synth_abs(i)  return 3000 + 2500 * math_sin(i * 0.21) + ((i % 23 == 0) and 30000 or 0) end
-local function synth_hp(i)   return 1.0 - (i % 50) / 50 end   -- sawtooth death-dive 100%→0
+local function synth_hp(i)   return 1.0 - (i % 50) / 50 end
 
--- ── injector 1: render/decimation path (sample-level) ─────────────────────────
 function M.stress_fill(count)
   local TB  = Verditer.TemporalBuffer
   local cap = TB.capacity()
@@ -109,10 +81,6 @@ function M.stress_fill(count)
   return count
 end
 
--- ── injector 2: hot path (event-level) ────────────────────────────────────────
--- Drives the live pipeline so the pipeline.* profiler zones + alloc behaviour can
--- be measured at volume without a real fight. Read results via /verditer prof or
--- /verditer report. Requires the addon in its normal active mode (uses dmg_in).
 function M.stress_events(n)
   n = n or 5000
   local Pipeline = Verditer.Pipeline
@@ -122,8 +90,6 @@ function M.stress_events(n)
     local bkt  = i % SOURCE_BUCKETS
     local uid  = 1000 + bkt
     local dt   = 1 + (i % TYPE_BUCKETS)
-    -- dispatch_dmg_in(result,isError,_name,_g,_slot, srcName,_srcType,_tgt,_tgtType,
-    --                 hit,_pt, damageType,_log, sourceUnitId,_tgtUid, abilityId, overflow)
     Pipeline.dispatch_dmg_in(RESULT, false, nil, nil, nil,
       MOCK_NAMES[bkt], nil, nil, nil, hit,
       nil, dt, nil, uid, nil, 10000 + dt, 0)
@@ -137,14 +103,6 @@ function M.stress_events(n)
                   n, math_floor(n / 7)))
 end
 
--- ── F4 corner: per-view render alloc isolation (gcprobe-style, N=1000) ─────────
--- Phase A showed TYPE allocating ~133 B/sample/render while SOURCE (same render_stacked)
--- did not. This isolates it decisively: warm the pools fully, double-collect, then
--- render N times measuring the heap delta. ~0 ⇒ the Phase-A number was measurement
--- noise; nonzero ⇒ a genuine per-render alloc to hunt down. Pool growth is excluded
--- (the warm renders fill the pool before the baseline), so anything left is real.
--- N must stay SMALL: a render is ~1000× heavier than the gcprobe's data-path op, so
--- the original N=1000 blocked the main thread long enough to disconnect (303).
 local ALLOC_PROBE_N    = 20
 local ALLOC_PROBE_WARM = 4
 
@@ -186,7 +144,6 @@ function M.alloc_probe(n)
   if Verditer.CopyBox then Verditer.CopyBox.show("Verditer allocprobe", table_concat(lines, "\n")) end
 end
 
--- ── orchestrator: the render ledger ───────────────────────────────────────────
 function M.run(label, force)
   label = label or "run"
   local TB    = Verditer.TemporalBuffer
@@ -207,8 +164,6 @@ function M.run(label, force)
     return
   end
 
-  -- safety gate: post-decimation the draw is capped, so only guard against an absurd
-  -- buffer (the O(n) fold/fill). Real configs (≤6000) are fine; override with `force`.
   local cap = TB.capacity()
   if cap > SAFETY_MAX_SAMPLES and not force then
     d(string_format("[bench] ABORT: capacity=%d is absurdly large (fold/fill cost). Override: /verditer bench %s force", cap, label))
@@ -232,11 +187,9 @@ function M.run(label, force)
   rows[#rows + 1] = string_format("filled,ALL,%d,samples", filled)
   rows[#rows + 1] = string_format("canvas_w,ALL,%d,px", cw)
 
-  -- Scope the render.* zones to this bench. Warm each view once (builds the hit
-  -- index) BEFORE the alloc baseline so the REPS loop measures STEADY-STATE alloc.
   Prof.reset()
   for v = vmin, vmax do
-    Graph.bench_set_view(v)                 -- warm: 1 render, builds/reuses hit index
+    Graph.bench_set_view(v)
     for _ = 1, 2 do collectgarbage("collect") end
     local before = collectgarbage("count")
     for _ = 1, REPS do Graph.bench_render_once() end

@@ -1,16 +1,3 @@
---* core/death_recap.lua  (BACKLOG C — the soul)
---*
---* Captures a rich death recap by fusing TWO sources:
---*   1. the server's authoritative killing-attacks list (clean ability names +
---*      icons + attacker identity), read ~2 s after EVENT_PLAYER_DEAD, and
---*   2. our own metrics snapshot taken AT the instant of death (DTPS/ABS/by-type
---*      pressure + overkill), before the rolling windows decay.
---*
---* This module owns the data model + a small ring of recent deaths for prev/next
---* navigation. The window (`ui/recap.lua`) renders a record; it is source-agnostic
---* so the DEBUG `simulate()` (synthetic record) previews the full layout with no
---* death. The lead-up "film" (rec.lead) is synthetic for now; the always-on ring
---* that feeds it for real is increment 2 (BACKLOG C / SPEC §lead-up).
 
 Verditer = Verditer or {}
 local Verditer = Verditer
@@ -40,20 +27,15 @@ local math_ceil   = math.ceil
 
 local log = Verditer.Log.for_module("death_recap")
 
--- state ───────────────────────────────────────────────────────────────────────
 local deaths  = {}    -- recent deaths, oldest..newest, capped at RECAP.MAX_DEATHS
 local sel_idx = 0     -- index currently shown in the window (1..#deaths)
 local enabled = true  -- Death Recap on/off (SavedVar, default on). When off the lead
                       -- ring + death/respawn hooks are UNREGISTERED → genuinely zero cost.
 
--- always-on lead-up ring: samples HP/DTPS/ABS at a fixed cadence so a death can
--- freeze the last LEAD_SECONDS as the recap "film" — independent of whether the
--- user is Recording. Slots are mutated in place (no per-tick alloc).
 local lead_ring = {}
 local lead_cap, lead_ms = 0, 250
 local lead_w, lead_n = 1, 0
 
--- pressure snapshot scratch (reused; copied into each record)
 local type_scratch = { count = 0 }
 local src_scratch  = { count = 0 }
 
@@ -68,9 +50,6 @@ local function current_zone()
   return ""
 end
 
--- Count real attackers in a source-group scratch: exclude the environment/self
--- bucket (uid 0 = fall/lava/trap) so "# attackers" means enemies, not hazards.
--- The "Other" fold (uid -1) is a real-attacker remainder, so it counts as ≥1.
 local function count_attackers(scratch)
   local c = 0
   for i = 1, (scratch.count or 0) do
@@ -91,8 +70,6 @@ local function copy_types(out_arr, scratch)
   out_arr.count = n
 end
 
--- Clean attacker label from the server attacker tuple (PvP names carry ^Mx markup
--- and realm codes; players prefer the primary @account/character name).
 local function attacker_name(i)
   local rawName, _cp, _lvl, _ava, isPlayer, _isBoss, _alliance, minionName, displayName
         = GetKillingAttackerInfo(i)
@@ -110,7 +87,6 @@ local function attacker_name(i)
   return nm
 end
 
--- always-on lead ring tick (registered in init, runs forever, very cheap)
 local function lead_tick()
   local now     = GetGameTimeMilliseconds()
   local Metrics = Verditer.Metrics
@@ -123,9 +99,7 @@ local function lead_tick()
   if lead_n < lead_cap then lead_n = lead_n + 1 end
 end
 
--- Freeze the ring (oldest..newest) into rec.lead at the death instant. Also
--- derives the TRUE peak DTPS over the window and the shield-break frame (the last
--- sample where ABS was still being eaten — the moment the shield collapsed).
+
 local function freeze_lead(rec)
   local lead   = rec.lead
   local n      = lead_n
@@ -139,8 +113,6 @@ local function freeze_lead(rec)
     local d   = lead[i]
     if not d then d = {}; lead[i] = d end
     d.t = s.t; d.hp = s.hp; d.dtps = s.dtps; d.abs = s.abs
-    -- fresh HP lost this frame = the drop from the previous sample. Drawn as a red
-    -- band capping the green silhouette (the chunk torn off that 250 ms).
     local hp = s.hp or 0
     d.hp_drop = (prev_hp >= 0 and hp >= 0) and math_max(0, prev_hp - hp) or 0
     prev_hp = hp
@@ -148,10 +120,6 @@ local function freeze_lead(rec)
     if (s.abs or 0) > 0 then last_shield = i end
   end
 
-  -- Append an exact hp=0 frame at the death instant. The 250 ms ring rarely lands
-  -- on the exact moment of death, so the silhouette would otherwise stop short of
-  -- the floor. This final frame plunges to 0; its hp_drop = the last living HP, so
-  -- the killing fall reads as a tall red column reaching down to where HP was.
   if n > 0 then
     local last = lead[n]
     local zi   = n + 1
@@ -167,7 +135,6 @@ local function freeze_lead(rec)
 
   lead.count        = n
   lead.shield_break = (last_shield > 0 and last_shield < n) and last_shield or nil
-  -- peak DTPS is the max OVER the film frames → always in-window by construction.
   lead.peak_idx     = (peak_idx > 0) and peak_idx or nil
   if peak > 0 and rec.pressure then rec.pressure.peak_dtps = peak end
 end
@@ -182,13 +149,11 @@ local function commit(rec)
     if Verditer.Sound then Verditer.Sound.play("WINDOW_OPEN") end
     Verditer.Recap.show_record(sel_idx)
   end
-  -- a new death exists → make the graph's "Deaths" browser button discoverable
   if Verditer.Graph and Verditer.Graph.notify_deaths_changed then
     Verditer.Graph.notify_deaths_changed()
   end
 end
 
--- Read the server killing-attacks list and finalize the pending record.
 local function finalize(rec)
   local n = GetNumKillingAttacks and GetNumKillingAttacks() or 0
   local cap = C.RECAP.MAX_ATTACKS or 6
@@ -208,11 +173,9 @@ local function finalize(rec)
     }
   end
 
-  -- biggest hits first; the killing blow is flagged but not forced to the top
   table_sort(rec.attacks, function(a, b) return a.dmg > b.dmg end)
   while #rec.attacks > cap do table_remove(rec.attacks) end
 
-  -- verdict = the killing blow (fallback: biggest hit)
   local verdict
   for i = 1, #rec.attacks do
     if rec.attacks[i].kb then verdict = rec.attacks[i]; break end
@@ -248,16 +211,14 @@ local function on_player_dead()
     lead    = {},
   }
   copy_types(rec.pressure.types, type_scratch)
-  freeze_lead(rec)   -- snapshot the lead-up film AT the death instant
+  freeze_lead(rec)
 
-  -- the server list is only readable after the engine's delay; one-shot timer
   ev.register_update("VerditerRecapServerRead", C.RECAP.SERVER_DELAY_MS, function()
     ev.unregister_update("VerditerRecapServerRead")
     finalize(rec)
   end)
 end
 
--- navigation API for the window ─────────────────────────────────────────────────
 function M.count()        return #deaths        end
 function M.get(idx)       return deaths[idx]    end
 function M.selected_idx() return sel_idx        end
@@ -266,10 +227,6 @@ function M.select(idx)
   return false
 end
 
--- Drop every recorded death. A "session" = ONE recording (Record → Stop/Flush),
--- so Flush ends the session and its recaps belong to it: discard them to free
--- memory (they live in their own ring, independent of the metrics FIFO). Closes
--- the window if it was showing a now-gone death and updates the graph button.
 function M.clear()
   for i = #deaths, 1, -1 do deaths[i] = nil end
   sel_idx = 0
@@ -280,14 +237,10 @@ function M.clear()
   log:info("deaths cleared")
 end
 
--- Respawn: keep the recap visible WHILE dead, but hide it the moment we revive.
--- (Hide only — the ring is NOT cleared here; Flush owns clearing, see M.clear.)
 local function on_player_alive()
   if Verditer.Recap and Verditer.Recap.on_close then Verditer.Recap.on_close() end
 end
 
--- DEBUG: synthesize a believable death so the window can be previewed with no
--- actual death (probe-first discipline). Includes a fake lead-up film.
 function M.simulate()
   local now = GetGameTimeMilliseconds()
   local DTC = Verditer.DamageTypeColors
@@ -321,7 +274,6 @@ function M.simulate()
   rec.pressure.types.count = 4
   rec.killer = rec.attacks[1]
 
-  -- synthetic lead-up film: HP accelerating to 0, shield gone at ~70% through
   local N = 40
   local prev = -1
   local peak, peak_idx = 0, 0
@@ -329,7 +281,7 @@ function M.simulate()
     local f  = i / N
     local hp = math_max(0, 1.0 - f * f * 1.05)
     if i == N then hp = 0 end
-    local dt = 4000 + 14000 * math_min(f / 0.85, 1.0)   -- burst peaks ~85% then plateaus
+    local dt = 4000 + 14000 * math_min(f / 0.85, 1.0)
     rec.lead[i] = {
       t       = now - (N - i) * 250,
       hp      = hp,
@@ -347,8 +299,6 @@ function M.simulate()
   commit(rec)
 end
 
--- start/stop the always-on machinery (lead ring + death/respawn hooks). Toggled by
--- the Settings "Death Recap" switch so a user who doesn't want it pays nothing.
 local function start()
   lead_w, lead_n = 1, 0
   ev.register_update("VerditerRecapLead", lead_ms, lead_tick)
@@ -375,13 +325,12 @@ function M.set_enabled(e)
     log:info("death recap enabled")
   else
     stop()
-    M.clear()          -- hides the window + the Deaths button + frees the deaths ring
+    M.clear()
     log:info("death recap disabled")
   end
 end
 
 function M.init()
-  -- size the always-on lead ring (cheap, one-time; reused across enable/disable)
   lead_ms  = C.RECAP.LEAD_SAMPLE_MS or 250
   lead_cap = math_max(2, math_ceil((C.RECAP.LEAD_SECONDS or 10) * 1000 / lead_ms))
   for i = 1, lead_cap do lead_ring[i] = { t = 0, hp = -1, dtps = 0, abs = 0 } end

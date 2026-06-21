@@ -1,9 +1,3 @@
---* pipeline/processing.lua
---*
---* Stage 3. Routes a filtered VerditerEvent to the appropriate metrics ingestor.
---* The event becomes the buffer's owned entry from this point — the caller MUST
---* NOT release it. Buffer trim (on_evict) returns it to the pool when the time
---* window passes.
 
 Verditer = Verditer or {}
 local Verditer = Verditer

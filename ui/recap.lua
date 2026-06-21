@@ -40,12 +40,12 @@ local C_DMG    = { r = 0.95, g = 0.85, b = 0.55, a = 1.00 }
 local C_KB     = { r = 0.96, g = 0.36, b = 0.30, a = 1.00 }
 local C_NAME   = { r = 0.90, g = 0.92, b = 0.96, a = 1.00 }
 local C_HP     = { r = 0.30, g = 0.80, b = 0.45, a = 0.95 }
-local C_SHIELD = { r = 0.44, g = 0.66, b = 1.00, a = 0.95 }  -- celeste: shield-break line
-local C_PEAK   = { r = 0.97, g = 0.74, b = 0.30, a = 0.90 }  -- amber: peak-DTPS line
-local C_CHROME = Verditer.Constants.BRAND.CHROME   -- shared blue chrome wash
+local C_SHIELD = { r = 0.44, g = 0.66, b = 1.00, a = 0.95 }
+local C_PEAK   = { r = 0.97, g = 0.74, b = 0.30, a = 0.90 }
+local C_CHROME = Verditer.Constants.BRAND.CHROME
 local C_GRID   = { r = 0.55, g = 0.58, b = 0.70, a = 0.25 }
 
--- layout (within Content)
+
 local ICON_SZ   = 54
 local ATTACK_Y0 = 112
 local ROW_H     = 20
@@ -53,7 +53,7 @@ local MAX_ROWS  = 6
 local LEAD_HDR_Y = 238
 local FILM_Y     = 252
 local FILM_H     = 52
-local FILM_X0    = 28    -- left gutter for the 100%/0% HP axis
+local FILM_X0    = 28
 local LEAD_BARS  = 80
 local PRESS_Y    = 324
 local TYPE_HDR_Y = 346
@@ -62,13 +62,10 @@ local MAX_TYPES  = 6
 
 local controls = {}
 
--- helpers ───────────────────────────────────────────────────────────────────
 local function abbr(v)
   return ZO_AbbreviateAndLocalizeNumber(math_floor(v + 0.5), 1, false)
 end
 
--- "Xs ago" / "Xm Ys ago" for a death's timestamp (snapshot at view/page time —
--- locates the page in the deaths browser). Empty if the record carries no ts.
 local function ago_text(ts)
   if not ts or ts <= 0 then return "" end
   local s = math_floor((GetGameTimeMilliseconds() - ts) / 1000)
@@ -99,13 +96,10 @@ local function mk_tex(name)
   return t
 end
 
--- HP→colour gradient for the lead film: green (full) → amber (half) → red (near
--- death). The silhouette visibly reddens as you die — danger reads in the colour,
--- not just the height.
 local C_HP_FULL = { 0.30, 0.80, 0.45 }
 local C_HP_MID  = { 0.95, 0.78, 0.30 }
 local C_HP_LOW  = { 0.92, 0.26, 0.22 }
-local C_FRESH   = { 0.95, 0.25, 0.22 }   -- red band: HP torn off this frame
+local C_FRESH   = { 0.95, 0.25, 0.22 }
 local function hp_color(hp)
   local a, b, t
   if hp >= 0.5 then a, b, t = C_HP_MID, C_HP_FULL, (hp - 0.5) * 2
@@ -115,17 +109,14 @@ local function hp_color(hp)
          a[3] + (b[3] - a[3]) * t
 end
 
--- hex for ESO |c colour markup (recap hover colours the type name)
 local function hexcol(r, g, b)
   return string_format("%02x%02x%02x",
     math_floor((r or 1) * 255 + 0.5), math_floor((g or 1) * 255 + 0.5), math_floor((b or 1) * 255 + 0.5))
 end
 
--- build static content controls (once) ───────────────────────────────────────
 local function build_content()
   local content = controls.content
 
-  -- verdict
   controls.killer_icon = WM:CreateControl("VerditerRecapKillerIcon", content, CT_TEXTURE)
   controls.killer_icon:SetDimensions(ICON_SZ, ICON_SZ)
   controls.killer_icon:SetAnchor(TOPLEFT, content, TOPLEFT, 2, 6)
@@ -147,13 +138,11 @@ local function build_content()
   controls.overkill:SetAnchor(TOPRIGHT, content, TOPRIGHT, 0, 6)
   controls.overkill:SetDimensions(180, 20)
 
-  -- final blows header
   controls.fb_hdr = mk_label("VerditerRecapFbHdr", "ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
   controls.fb_hdr:SetAnchor(TOPLEFT, content, TOPLEFT, 2, 90)
   controls.fb_hdr:SetDimensions(460, 16)
   controls.fb_hdr:SetText(GetString(VERDITER_RECAP_FINAL_BLOWS))
 
-  -- attack rows
   controls.rows = {}
   for i = 1, MAX_ROWS do
     local y = ATTACK_Y0 + (i - 1) * ROW_H
@@ -181,8 +170,6 @@ local function build_content()
     controls.rows[i] = { icon = icon, name = nm, dmg = dmg, kb = kb, who = who }
   end
 
-  -- HP lead-up film: a per-second HP silhouette (green→amber→red as you die),
-  -- with a 100/0 axis, a "death" marker and the shield-break line.
   controls.lead_hdr = mk_label("VerditerRecapLeadHdr", "ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
   controls.lead_hdr:SetAnchor(TOPLEFT, content, TOPLEFT, 2, LEAD_HDR_Y)
   controls.lead_hdr:SetDimensions(460, 16)
@@ -192,8 +179,7 @@ local function build_content()
   controls.lead_base:SetColor(C_GRID.r, C_GRID.g, C_GRID.b, C_GRID.a)
   controls.shield_line = mk_tex("VerditerRecapShieldLine")
   controls.shield_line:SetColor(C_SHIELD.r, C_SHIELD.g, C_SHIELD.b, C_SHIELD.a)
-  -- The shield-break line is 1px (impossible to hover), so an invisible wider strip
-  -- sits over it carrying the tooltip that explains what the celeste line means.
+
   controls.shield_hit = mk_tex("VerditerRecapShieldHit")
   controls.shield_hit:SetColor(0, 0, 0, 0)
   controls.shield_hit:SetMouseEnabled(true)
@@ -202,8 +188,7 @@ local function build_content()
     ZO_Tooltips_ShowTextTooltip(self, TOP, GetString(VERDITER_TT_SHIELD_BREAK))
   end)
   controls.shield_hit:SetHandler("OnMouseExit", function() ZO_Tooltips_HideTextTooltip() end)
-  -- peak-DTPS line (amber): the frame of the worst incoming DTPS in the window, with
-  -- its own wider invisible hover strip carrying the explainer tooltip.
+
   controls.peak_line = mk_tex("VerditerRecapPeakLine")
   controls.peak_line:SetColor(C_PEAK.r, C_PEAK.g, C_PEAK.b, C_PEAK.a)
   controls.peak_hit = mk_tex("VerditerRecapPeakHit")
@@ -218,8 +203,8 @@ local function build_content()
   controls.lead_bars = {}
   controls.lead_reds = {}
   for i = 1, LEAD_BARS do
-    controls.lead_bars[i] = mk_tex("VerditerRecapLeadBar" .. i)   -- HP silhouette, colour per-frame
-    controls.lead_reds[i] = mk_tex("VerditerRecapLeadRed" .. i)   -- fresh-damage cap (red)
+    controls.lead_bars[i] = mk_tex("VerditerRecapLeadBar" .. i)
+    controls.lead_reds[i] = mk_tex("VerditerRecapLeadRed" .. i)
   end
 
   controls.lead_hp100  = mk_label("VerditerRecapHp100", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_RIGHT)
@@ -229,12 +214,10 @@ local function build_content()
   controls.lead_hp0:SetDimensions(FILM_X0 - 3, 12)
   controls.lead_tright:SetDimensions(60, 12)
 
-  -- pressure line
   controls.pressure = mk_label("VerditerRecapPressure", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
   controls.pressure:SetAnchor(TOPLEFT, content, TOPLEFT, 2, PRESS_Y)
   controls.pressure:SetDimensions(480, 16)
 
-  -- by-type header (the colour strip below names each type on hover)
   controls.types_hdr = mk_label("VerditerRecapTypesHdr", "ZoFontGameSmall", C_HEADER, TEXT_ALIGN_LEFT)
   controls.types_hdr:SetAnchor(TOPLEFT, content, TOPLEFT, 2, TYPE_HDR_Y)
   controls.types_hdr:SetDimensions(460, 16)
@@ -249,8 +232,7 @@ local function build_content()
     local lbl = mk_label("VerditerRecapType" .. i .. "Lbl", "ZoFontGameSmall", C_SUB, TEXT_ALIGN_LEFT)
     lbl:SetDimensions(40, 14)
     lbl:SetHidden(true)
-    -- invisible hit-area over swatch+label → hover shows the damage-type name.
-    -- (First taste of the hover feature, on the simplest surface — BACKLOG D.)
+
     local hit = WM:CreateControl("VerditerRecapType" .. i .. "Hit", content, CT_CONTROL)
     hit:SetMouseEnabled(true)
     hit:SetHidden(true)
@@ -266,9 +248,6 @@ local function hide_film_labels()
   controls.lead_tright:SetHidden(true)
 end
 
--- The HP film: a contiguous silhouette of HP each second, coloured green→amber→
--- red by level (so it reddens into death). 100/0 axis on the left, a "death"
--- marker on the right, and the blue shield-break line where the shield collapsed.
 local function render_lead(rec)
   local content = controls.content
   local cw = content:GetWidth()
@@ -298,7 +277,7 @@ local function render_lead(rec)
     local s    = rec.lead[i]
     local left = FILM_X0 + math_floor((i - 1) * slot + 0.5)
     local rite = FILM_X0 + math_floor(i * slot + 0.5)
-    local bw   = math_max(1, rite - left)            -- contiguous (no gap) → solid silhouette
+    local bw   = math_max(1, rite - left)
     local hp   = s.hp or 0
     if hp < 0 then hp = 0 elseif hp > 1 then hp = 1 end
     local h    = math_max(1, math_floor(hp * FILM_H + 0.5))
@@ -310,8 +289,6 @@ local function render_lead(rec)
     b:SetDimensions(bw, h)
     b:SetHidden(false)
 
-    -- red cap = HP torn off this frame, sitting exactly where the green fell from
-    -- (so the bar's full height marks where HP stood at the start of the frame).
     local drop = s.hp_drop or 0
     if drop < 0 then drop = 0 end
     local deficit = 1 - hp
@@ -321,7 +298,7 @@ local function render_lead(rec)
       local rd = controls.lead_reds[i]
       rd:SetColor(C_FRESH[1], C_FRESH[2], C_FRESH[3], 0.95)
       rd:ClearAnchors()
-      rd:SetAnchor(BOTTOMLEFT, content, TOPLEFT, left, baseline_y - h)   -- on top of the green
+      rd:SetAnchor(BOTTOMLEFT, content, TOPLEFT, left, baseline_y - h)
       rd:SetDimensions(bw, rh)
       rd:SetHidden(false)
     end
@@ -334,14 +311,12 @@ local function render_lead(rec)
     controls.shield_line:SetAnchor(TOPLEFT, content, TOPLEFT, x, FILM_Y)
     controls.shield_line:SetDimensions(1, FILM_H)
     controls.shield_line:SetHidden(false)
-    -- wider invisible hover strip centred on the line (carries the tooltip)
     controls.shield_hit:ClearAnchors()
     controls.shield_hit:SetAnchor(TOPLEFT, content, TOPLEFT, x - 4, FILM_Y)
     controls.shield_hit:SetDimensions(9, FILM_H)
     controls.shield_hit:SetHidden(false)
   end
 
-  -- peak-DTPS marker (amber): the frame of the worst incoming DTPS in the window.
   local pk = rec.lead.peak_idx
   if pk and pk >= 1 and pk <= n then
     local px = FILM_X0 + math_floor((pk - 0.5) * slot + 0.5)
@@ -388,7 +363,6 @@ local function render_types(rec)
       t.lbl:SetAnchor(TOPLEFT, content, TOPLEFT, x + 13, TYPE_Y)
       t.lbl:SetText(string_format("%d%%", share))
       t.lbl:SetHidden(false)
-      -- hover tooltip names the type in ITS OWN colour (Federico's ask)
       local tnm = (DTC and DTC.name) and DTC.name(g.dt) or "Damage"
       t.tip = string_format("|c%s%s|r  —  %d%%", hexcol(g.r, g.g, g.b), tnm, share)
       t.hit:ClearAnchors()
@@ -404,7 +378,6 @@ local function render_types(rec)
   end
 end
 
--- populate the whole window from a record ─────────────────────────────────────
 local function populate(rec)
   local k = rec.killer
   controls.killer_icon:SetTexture(k and k.icon or FILL)
@@ -452,7 +425,6 @@ local function populate(rec)
   end
 
   local p = rec.pressure or {}
-  -- effective mitigation = shielded / (shielded + reached-HP) at the death instant
   local total = (p.abs or 0) + (p.dtps or 0)
   local mit   = (total > 0) and math_floor((p.abs or 0) / total * 100 + 0.5) or 0
   controls.pressure:SetText(string_format(GetString(VERDITER_RECAP_PRESSURE),
@@ -465,7 +437,6 @@ local function populate(rec)
   controls.index:SetText(string_format("%d / %d", idx, total))
 end
 
--- public ──────────────────────────────────────────────────────────────────────
 function M.show_record(idx)
   if not Verditer.DeathRecap.select(idx) then return end
   controls.window:SetHidden(false)
@@ -488,8 +459,6 @@ function M.on_close()
 end
 
 function M.on_export()
-  -- Per-death export is a later idea; for now point at the real (release-safe)
-  -- Export window, which dumps the recorded session. (CopyBox is DEBUG-only.)
   Verditer.Export.show_text(
     "Per-death export is coming. For now this is the recorded session from the graph window.",
     (Verditer.Export.build_csv()) or "")
@@ -508,7 +477,6 @@ function M.on_resize_stop()
     sv.recap = sv.recap or {}
     sv.recap.w, sv.recap.h = controls.window:GetDimensions()
   end
-  -- the film + columns are width-responsive; re-render the shown death
   if not controls.window:IsHidden() and Verditer.DeathRecap.count() > 0 then
     populate(Verditer.DeathRecap.get(Verditer.DeathRecap.selected_idx()))
   end
@@ -544,11 +512,8 @@ function M.init()
   VerditerRecapBg:SetCenterColor(TINT.r, TINT.g, TINT.b, 0.92)
   VerditerRecapBg:SetEdgeColor(EDGE.r, EDGE.g, EDGE.b, 1.0)
 
-  -- belt-and-suspenders: ensure move/resize are on regardless of XML quirks
   controls.window:SetMovable(true)
   controls.window:SetResizeHandleSize(8)
-  -- min height holds ALL sections so the bottom (pressure + type strip) is never
-  -- clipped by an over-shrunk window (Federico hit exactly this).
   controls.window:SetDimensionConstraints(460, 470, 1000, 760)
 
   build_content()

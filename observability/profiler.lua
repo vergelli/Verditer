@@ -97,8 +97,6 @@ function M.exit(name)
   local budgets = Verditer.Constants.PROFILER_BUDGETS_MS
   local budget  = budgets and budgets[name]
   if budget and dt > budget and Verditer.Log and Verditer.Log.write then
-    -- heap_delta_kb < 0 ⇒ a GC collection ran inside this zone (the spike IS a GC
-    -- pause, F6). ≈0 / positive ⇒ not GC (pool growth or genuine compute).
     local heap_delta = math_floor(collectgarbage("count") - (frame.heap0 or 0))
     Verditer.Log.write("warn", "profiler.budget_exceeded",
       { stage = name, dt_ms = dt, budget_ms = budget, heap_delta_kb = heap_delta })

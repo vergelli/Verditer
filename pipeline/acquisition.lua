@@ -1,9 +1,3 @@
---* pipeline/acquisition.lua
---*
---* Stage 1. Acquires VerditerEvents from the pool and populates them from the
---* raw ZOS combat-event tuple (target = player). No filtering (stage 2), no
---* state mutation (stage 3). A nil return means the pool was exhausted —
---* callers must bump engine.pool.exhausted.
 
 Verditer = Verditer or {}
 local Verditer = Verditer
@@ -23,8 +17,7 @@ local function acquire()
   return Verditer.Metrics.acquire_event()
 end
 
--- incoming damage that reached HP. sourceName is stored by reference (the engine
--- already built the string) — zero new alloc; it is cleaned lazily at legend time.
+
 function M.acquire_dmg_in(t, hit, sourceUnitId, sourceName, damageType, abilityId, result, overflow)
   if (hit or 0) <= 0 then return nil end
   local ev = acquire()

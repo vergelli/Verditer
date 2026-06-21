@@ -1,10 +1,3 @@
---* ui/export.lua  (BACKLOG F)
---*
---* CSV export of a recorded session — Stop-gated, in its own branded window
---* (NOT the DEBUG-only CopyBox). Reuses ESO's selectable multiline-edit mechanism
---* but with Verditer blue chrome. Exports ONLY the data that backs the views: the
---* temporal-buffer samples (t / DTPS / ABS / HP / by-type / by-source). Nothing
---* from the raw combat log or internal counters.
 
 Verditer = Verditer or {}
 local Verditer = Verditer
@@ -33,10 +26,10 @@ local string_format = string.format
 local TINT     = Verditer.Constants.BRAND.TINT
 local C_TITLE  = { r = 0.82, g = 0.88, b = 1.00, a = 1.00 }
 local C_HINT   = { r = 0.66, g = 0.72, b = 0.82, a = 1.00 }
-local C_EDGE   = Verditer.Constants.BRAND.EDGE   -- shared vivid border
+local C_EDGE   = Verditer.Constants.BRAND.EDGE
 local MAX_CHARS = 500000
 
--- damage-type short names for the CSV (defensive build: skip nil enum keys)
+
 local DT_NAME = {}
 local function dn(k, v) if k ~= nil then DT_NAME[k] = v end end
 dn(zc.DAMAGE_TYPE_GENERIC, "Generic")  dn(zc.DAMAGE_TYPE_PHYSICAL, "Physical")
@@ -49,7 +42,6 @@ dn(zc.DAMAGE_TYPE_NONE,    "None")
 
 local controls
 
--- CSV builder ─────────────────────────────────────────────────────────────────
 local function pct(x) return math_floor((x or 0) * 100 + 0.5) end
 
 local function type_cell(groups)
@@ -92,17 +84,12 @@ local function build_line(s, t0)
   }, ",")
 end
 
--- Build the session CSV from the temporal buffer (the recorded view data).
--- BUDGET-AWARE: the edit box silently truncates past MAX_CHARS, so we stop adding
--- rows before the cap and report it, rather than ship a quietly-cut CSV. A long
--- session (big window x high sample rate) can exceed the cap — the caller warns.
--- Returns: csv, rows_written, rows_total, truncated(bool).
 function M.build_csv()
   local TB = Verditer.TemporalBuffer
   if not TB or TB.count() == 0 then return nil, 0, 0, false end
 
   local header = "t_s,DTPS,ABS,HP_pct,HP_drop,types,sources"
-  local budget = MAX_CHARS - 2048          -- reserve for header + a truncation note
+  local budget = MAX_CHARS - 2048
   local lines  = { header }
   local total_len = #header
   local t0
@@ -127,7 +114,6 @@ function M.build_csv()
   return table_concat(lines, "\n"), rows_written, rows_total, truncated
 end
 
--- branded window (built lazily) ───────────────────────────────────────────────
 local function build()
   local win = WINDOW_MANAGER:CreateTopLevelWindow("VerditerExportWindow")
   win:SetDimensions(580, 420)
@@ -203,7 +189,6 @@ end
 
 local function ensure_built() if not controls then build() end end
 
--- public ──────────────────────────────────────────────────────────────────────
 function M.show_text(hint, text)
   ensure_built()
   if hint then controls.hint:SetText(hint) end
@@ -213,7 +198,6 @@ function M.show_text(hint, text)
   if Verditer.Sound then Verditer.Sound.play("WINDOW_OPEN") end
 end
 
--- Build the session CSV and show it, warning if it didn't all fit.
 function M.show_session()
   local csv, written, total, truncated = M.build_csv()
   if not csv then

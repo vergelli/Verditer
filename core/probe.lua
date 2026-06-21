@@ -1,11 +1,3 @@
---* core/probe.lua  —  the acquisition probe (EXPLORATION §1)
---*
---* DEBUG-gated. BUILD AND RUN THIS BEFORE THE VIEWS. It confirms, against the
---* LIVE VM (not the docs), the incoming combat-event contract: which result
---* codes fire on TARGET=PLAYER, what hitValue means, where overflow/env/pet
---* land. One unfiltered-by-result EVENT_COMBAT_EVENT subscription, hardware-
---* filtered to the local player; ~one CSV row per event into a ring buffer,
---* dumped to the CopyBox (Ctrl+C) so the result can be pasted back.
 
 Verditer = Verditer or {}
 local Verditer = Verditer
@@ -28,8 +20,6 @@ local REGISTER_FILTER_IS_ERROR = C.REGISTER_FILTER_IS_ERROR
 local COMBAT_UNIT_TYPE_PLAYER     = C.COMBAT_UNIT_TYPE_PLAYER
 local COMBAT_UNIT_TYPE_PLAYER_PET = C.COMBAT_UNIT_TYPE_PLAYER_PET
 
--- readable labels for the result / damage-type codes we expect (best-effort;
--- unknown codes print as the bare number so the dump still reveals them).
 local RESULT_LABELS, DT_LABELS
 
 local function build_labels()
@@ -71,7 +61,6 @@ end
 local function rlabel(r)  return RESULT_LABELS[r] or ("r" .. tostring(r)) end
 local function dtlabel(t) return DT_LABELS[t]     or ("dt" .. tostring(t)) end
 
--- ring of formatted CSV rows + running tallies
 local state = {
   enabled    = false,
   rows       = {},
@@ -79,11 +68,11 @@ local state = {
   n          = 0,
   cap        = 0,
   events     = 0,
-  results    = {},   -- [result]   = count
-  dtypes     = {},   -- [dmgType]  = count
-  env        = 0,    -- sourceUnitId == 0  (environmental/self)
-  pet        = 0,    -- targetType == PLAYER_PET  (pet leakage)
-  overflow_n = 0,    -- non-zero overflow (overkill)
+  results    = {},
+  dtypes     = {},
+  env        = 0,
+  pet        = 0,
+  overflow_n = 0,
 }
 
 local function now() return GetGameTimeMilliseconds() end
@@ -109,8 +98,6 @@ local function on_combat(result, _isError, abilityName, _g, _slot,
   if state.n < state.cap then state.n = state.n + 1 end
 end
 
---* --- Public API ----------------------------------------------------------
-
 function M.set_enabled(v)
   state.enabled = v and true or false
   d("[Vd] probe " .. (state.enabled and "ON — taking hits to capture" or "OFF"))
@@ -130,7 +117,6 @@ function M.print_stats()
     state.events, state.n, state.env, state.pet, state.overflow_n))
 end
 
--- the CopyBox payload: header + summary tallies + every captured row.
 function M.dump_report()
   local L = {}
   L[#L+1] = "=== Verditer acquisition probe (TARGET=PLAYER) ==="
@@ -146,8 +132,6 @@ function M.dump_report()
     L[#L+1] = string_format("  %-10s (%d) : %d", dtlabel(t), t, c)
   end
 
-  -- engine / perf footer (from the PRODUCTION pipeline running alongside the
-  -- probe) so one dump carries correctness + the §15.5 pool/perf signal.
   L[#L+1] = "-- engine / perf (production pipeline) --"
   if Verditer.Metrics and Verditer.Metrics.pool_in_use then
     L[#L+1] = string_format("  pool: in_use=%d / cap=%d",
@@ -186,8 +170,6 @@ function M.dump()
     d(M.dump_report())
   end
 end
-
---* --- Wiring ---------------------------------------------------------------
 
 function M.init()
   build_labels()

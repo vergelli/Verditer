@@ -1,13 +1,5 @@
 <GuiXml>
   <Controls>
-
-    <!--
-      Floating logo button. A movable TopLevelControl holding the logo texture.
-      Idle it sits at low alpha (ghosted); on hover it lights up to full; a click
-      (not a drag) opens the analytics window. Visibility is driven centrally by
-      core/visibility (Logo.sync): it shows only while in the HUD, the graph
-      window is closed, and the user hasn't disabled it in Settings.
-    -->
     <TopLevelControl name="VerditerLogo"
                      hidden="true"
                      movable="true"
@@ -22,9 +14,7 @@
       <OnMouseExit>Verditer.Logo.on_exit()</OnMouseExit>
 
       <Controls>
-        <!-- Halo, drawn BEHIND the logo (declared first). Bigger than the 64px
-             button so it bleeds out as a glow. Hidden at idle; on hover it fades
-             in (ADD blend, set in Lua) and pulses. -->
+
         <Texture name="$(parent)Glow" textureFile="Verditer/assets/glow.dds" hidden="true">
           <Dimensions x="112" y="112"/>
           <Anchor point="CENTER" relativeTo="$(parent)" relativePoint="CENTER"/>

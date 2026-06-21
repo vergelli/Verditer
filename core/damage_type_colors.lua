@@ -1,9 +1,3 @@
---* core/damage_type_colors.lua
---*
---* Replaces Vermilion's open-ended, hand-maintained skill_colors map with a
---* fixed O(1) lookup over the 13 DAMAGE_TYPE_* enum values (SPEC §10). The key
---* space is closed and engine-determined, so classification is TOTAL — there is
---* no Unknown bucket and nothing for the user to assign (SPEC §10.1).
 
 Verditer = Verditer or {}
 local Verditer = Verditer
@@ -13,8 +7,6 @@ local zc = Verditer.zenimax.constants
 local DTC = {}
 Verditer.DamageTypeColors = DTC
 
--- additive build (skip any nil constant rather than risk a [nil]=... crash that
--- would break the whole addon load if ZOS ever renames a damage type).
 local function put(dt, r, g, b)
   if dt ~= nil then DTC[dt] = { r = r, g = g, b = b, a = 0.90 } end
 end
@@ -35,9 +27,6 @@ put(zc.DAMAGE_TYPE_NONE,     0.50, 0.50, 0.50)  -- fold to GENERIC if it never a
 
 local FALLBACK = { r = 0.70, g = 0.70, b = 0.70, a = 0.90 }
 
--- The only honest "just in case" (SPEC §10.1): a value outside the 13 (e.g. a
--- damage type ZOS adds in a future patch) returns FALLBACK and bumps a
--- diagnostic counter so the DEBUG probe surfaces it. No assignment UI, ever.
 function DTC.lookup(dt)
   local c = DTC[dt]
   if c then return c end
@@ -45,8 +34,6 @@ function DTC.lookup(dt)
   return FALLBACK
 end
 
--- Short display names for the 13 types (CSV export + recap hover). Defensive
--- build (skip nil enum keys), single source of truth so export/recap don't drift.
 local DT_NAMES = {}
 local function nm(dt, s) if dt ~= nil then DT_NAMES[dt] = s end end
 nm(zc.DAMAGE_TYPE_GENERIC, "Generic")  nm(zc.DAMAGE_TYPE_PHYSICAL, "Physical")

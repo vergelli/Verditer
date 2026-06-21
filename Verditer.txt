@@ -1,7 +1,7 @@
 ## Title: Verditer
 ## Description: Real-time incoming-damage analytics — what hits you, what your shields eat, by type
 ## Author: Federico Vergelli
-## Version: 0.1.0
+## Version: 0.9.0
 ## AddOnVersion: 1
 ## APIVersion: 101049 101050
 ## SavedVariables: VerditerSavedVars

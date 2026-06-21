@@ -5,7 +5,6 @@ local M = Verditer.TemporalBuffer
 local math_floor = math.floor
 local log        = Verditer.Log.for_module("temporal_buffer")
 
---* state
 local state = {
   data      = {},
   capacity  = 0,
@@ -14,7 +13,6 @@ local state = {
   recording = false,
 }
 
---* public API ────────────────────────────────────────────────────────────────
 function M.init(capacity)
   capacity       = math_floor(capacity)
   if capacity < 1 then capacity = 1 end
@@ -23,9 +21,6 @@ function M.init(capacity)
   state.count    = 0
   state.data     = {}
   for i = 1, capacity do
-    -- hp_pct = min HP fraction in the interval (Survival); hp_drop = fraction of
-    -- HP lost this tick (the fresh-damage red band). -1 hp_pct => unknown.
-    -- type_groups = stacked-by-damage-type; source_groups = stacked-by-attacker.
     state.data[i] = { t = 0, DTPS = 0, ABS = 0, hp_pct = -1, hp_drop = 0,
                       type_groups = { count = 0 }, source_groups = { count = 0 } }
   end
@@ -47,11 +42,10 @@ function M.push(timestamp, DTPS, ABS, type_groups, hp_pct, hp_drop, source_group
     local d = dst[i]
     if d == nil then d = {}; dst[i] = d end
     d.r = s.r; d.g = s.g; d.b = s.b; d.a = s.a; d.share = s.share
-    d.dt = s.dt   -- keep the damage-type id (CSV export names it; render uses colour)
+    d.dt = s.dt
   end
   dst.count = n
 
-  -- source_groups carry uid + name as well (for the BY_SOURCE legend / hover).
   local sdst = slot.source_groups
   local sn   = (source_groups and (source_groups.count or #source_groups)) or 0
   for i = 1, sn do
@@ -84,8 +78,6 @@ function M.count()        return state.count     end
 function M.capacity()     return state.capacity  end
 function M.is_recording() return state.recording end
 
--- Most recently pushed sample (the rightmost bar), or nil if empty. Used by the
--- BY_SOURCE legend to mirror the latest stacked column.
 function M.latest()
   if state.count == 0 then return nil end
   local idx = state.write - 1

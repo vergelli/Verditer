@@ -45,9 +45,6 @@ local ts_head     = 0
 local ts_count    = 0
 local start_time  = 0
 
--- perf lenses sampled on the 1s diag tick (graphics: fps; memory: heap watermark).
--- These are the live-window counterparts to the synthetic /verditer bench: fps is
--- the user-visible symptom, heap_kb the net retention since reset (leak tripwire).
 local fps_min     = 0
 local fps_sum     = 0
 local fps_count   = 0

@@ -1,21 +1,12 @@
 <GuiXml>
   <Controls>
 
-    <!-- Virtual template for polyline segments. -->
     <Line name="VerditerGraphLineTemplate"
           thickness="2"
           textureFile="EsoUI/Art/UnitAttributeVisualizer/attributeBar_dynamic_fill.dds"
           pixelRoundingEnabled="false"
           virtual="true"/>
 
-    <!--
-      Two-layer architecture (mirror of Vermilion):
-      - Outer container (TopLevelControl): movable/resizable window with its own
-        backdrop, holds the chrome (title, record/stop/flush, view navigation).
-      - Inner viewport: a separate Control with its own Backdrop, hosts the
-        single graph canvas. Both v0.1 views (OUTCOME / TYPE) render here; the
-        diverging OUTCOME view draws a shared baseline mid-canvas in Lua.
-    -->
     <TopLevelControl name="VerditerGraphWindow"
                      hidden="true"
                      clampedToScreen="true"
@@ -29,7 +20,6 @@
 
       <Controls>
 
-        <!-- Outer container backdrop (donut chrome: <Center> disabled from Lua). -->
         <Backdrop name="$(parent)Bg">
           <AnchorFill/>
           <Edge file="EsoUI/Art/Tooltips/UI-Border.dds"
@@ -37,7 +27,6 @@
           <Insets left="6" top="6" right="-6" bottom="-6"/>
         </Backdrop>
 
-        <!-- Chrome donut: 4 strips around the viewport. -->
         <Texture name="$(parent)ChromeTop"
                  textureFile="EsoUI/Art/Tooltips/UI-TooltipCenter.dds">
           <Anchor point="TOPLEFT"     relativeTo="$(parent)" relativePoint="TOPLEFT"  offsetX="6"  offsetY="6"/>
@@ -62,13 +51,11 @@
           <Anchor point="BOTTOMRIGHT" relativeTo="$(parent)" relativePoint="BOTTOMRIGHT" offsetX="-6"  offsetY="-14"/>
         </Texture>
 
-        <!-- Brand mark: small logo at the left of the title bar (identity). -->
         <Texture name="$(parent)BrandLogo" textureFile="Verditer/assets/logo.dds">
           <Anchor point="TOPLEFT" offsetX="12" offsetY="6"/>
           <Dimensions x="26" y="26"/>
         </Texture>
 
-        <!-- Title -->
         <Label name="$(parent)TitleLabel"
                font="ZoFontGameSmall"
                horizontalAlignment="LEFT"
@@ -77,7 +64,6 @@
           <Dimensions x="128" y="14"/>
         </Label>
 
-        <!-- Settings toggle — 28x28 gear. -->
         <Button name="$(parent)SettingsBtn"
                 mouseEnabled="true"
                 mouseOverBlendMode="ADD"
@@ -104,7 +90,6 @@
           <OnClicked>Verditer.Graph.on_close_click()</OnClicked>
         </Button>
 
-        <!-- Export (CSV of the recorded session). Hidden until Stopped with data. -->
         <Button name="$(parent)ExportBtn"
                 hidden="true"
                 mouseEnabled="true"
@@ -120,8 +105,6 @@
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Button>
 
-        <!-- Deaths browser: opens the recap and pages through the session's
-             deaths. Hidden until at least one death is recorded (Lua-managed). -->
         <Button name="$(parent)DeathsBtn"
                 hidden="true"
                 mouseEnabled="true"
@@ -137,7 +120,6 @@
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Button>
 
-        <!-- Controls row: Record / Stop / Flush. -->
         <Button name="$(parent)RecordBtn"
                 mouseEnabled="true"
                 font="ZoFontGameSmall"
@@ -173,8 +155,6 @@
           <Dimensions x="56" y="14"/>
         </Label>
 
-        <!-- Live ITP readout: armor icon (idle/active) + current ITP value.
-             Sits in the TITLE row on the LEFT, just after the title. -->
         <Texture name="$(parent)ItpIcon"
                  textureFile="/esoui/art/treeicons/collection_indexicon_armor_up.dds"
                  mouseEnabled="true">
@@ -195,7 +175,6 @@
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Label>
 
-        <!-- Effective-mitigation chip: % of incoming the shield ate (defensive QoL). -->
         <Label name="$(parent)MitLabel"
                font="ZoFontGameSmall"
                horizontalAlignment="LEFT"
@@ -207,7 +186,6 @@
           <OnMouseExit>ZO_Tooltips_HideTextTooltip()</OnMouseExit>
         </Label>
 
-        <!-- View navigation: [<<] [OUTCOME] [>] — controls row, far right. -->
         <Button name="$(parent)PrevViewBtn"
                 mouseEnabled="true"
                 mouseOverBlendMode="ADD"
@@ -240,7 +218,6 @@
           <OnClicked>Verditer.Graph.next_view()</OnClicked>
         </Button>
 
-        <!-- ── Inner viewport: single canvas for both views ─────────────── -->
         <Control name="$(parent)Viewport" mouseEnabled="false">
           <Anchor point="TOPLEFT"     offsetX="14"  offsetY="62"/>
           <Anchor point="BOTTOMRIGHT" offsetX="-14" offsetY="-14"/>
