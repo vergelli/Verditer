@@ -780,6 +780,7 @@ local function render_stacked(groups_field, key_field)
 
   local m, num_cols, col_w, bar_gap = decimate(cw)
   local xs, top_hs = rt_xs, rt_top_hs
+  local bwu = math_max(1, math_floor(col_w) - bar_gap)
 
   local capture = not Verditer.TemporalBuffer.is_recording()
   local hk = hover_key
@@ -789,7 +790,7 @@ local function render_stacked(groups_field, key_field)
     local s = dec_cols[i]
     local left, right = dec_rect(s.c, num_cols, cw)
     local x   = left
-    local bw  = math_max(1, right - left - bar_gap)
+    local bw  = bwu
     local col_h = math_max(0, math_floor(ch_plot * (s.DTPS / max_dtps) + 0.5))
     xs[i]     = x + bw * 0.5
     top_hs[i] = col_h
@@ -884,6 +885,7 @@ local function render_outcome()
 
   local m, num_cols, col_w, bar_gap = decimate(cw)
   local xs, up_hs, down_ys = ro_xs, ro_up_hs, ro_down_ys
+  local bwu = math_max(1, math_floor(col_w) - bar_gap)
 
   local capture = not Verditer.TemporalBuffer.is_recording()
   if capture then hit_begin(m) end
@@ -892,7 +894,7 @@ local function render_outcome()
     local s = dec_cols[i]
     local left, right = dec_rect(s.c, num_cols, cw)
     local x  = left
-    local bw = math_max(1, right - left - bar_gap)
+    local bw = bwu
     if capture then hit_col(i, left, right - left, s) end
     local up_h    = math_min(half, math_max(0, math_floor(s.DTPS * up_scale   + 0.5)))
     local down_h  = math_min(half, math_max(0, math_floor(s.ABS  * down_scale + 0.5)))
@@ -978,7 +980,8 @@ local function render_survival_bars()
   g.ylabels[1]:SetHidden(false)
   draw_time_strip(g, canvas, span_ms)
 
-  local m, num_cols, _, bar_gap = decimate(cw)
+  local m, num_cols, col_w, bar_gap = decimate(cw)
+  local bwu = math_max(1, math_floor(col_w) - bar_gap)
 
   local capture = not Verditer.TemporalBuffer.is_recording()
   if capture then hit_begin(m) end
@@ -987,7 +990,7 @@ local function render_survival_bars()
     local s = dec_cols[i]
     local left, right = dec_rect(s.c, num_cols, cw)
     local x  = left
-    local bw = math_max(1, right - left - bar_gap)
+    local bw = bwu
     if capture then hit_col(i, left, right - left, s) end
     local hp = s.hp_pct
     if hp < 0 then hp = 1 elseif hp > 1 then hp = 1 end
